@@ -1,0 +1,10 @@
+{
+  "app.name": "PersonnelPlanner",
+  "auth.login.title": "Sign in",
+  "auth.login.email": "Email",
+  "auth.login.password": "Password",
+  "auth.login.submit": "Sign in",
+  "auth.login.error": "These credentials do not match our records.",
+  "auth.logout": "Log out",
+  "common.loading": "Loading..."
+}
