@@ -110,7 +110,8 @@ Important assumptions:
 - per-person and company-level scheduling rules (starting with max weekly hours)
 - weekly/monthly reporting and PDF/Excel export, split by permanent vs. agency cost
 - employee-facing schedule view with three visibility levels (own / line / company), delivered as an installable PWA
-- email and SMS (MessageBird) notifications on approved-schedule changes
+- email and PWA Web Push notifications on approved-schedule changes
+- full multi-language support (English, Turkish, Dutch, Spanish, Romanian, Ukrainian) for both admin and employee roles, selected at registration and changeable anytime
 
 ### 5.2 Out of Scope for Initial Build
 
@@ -126,18 +127,19 @@ Important assumptions:
 
 ## 6. Product Modules
 
-The product is organized into six product domains:
+The product is organized into seven product domains:
 
 1. `Staff & Agencies` - employees, employment terms, temp agencies
 2. `Lines & Shift Patterns` - production lines, shift time definitions
-3. `Leave & Sick Tracking` - leave types, leave requests, approval
-4. `Weekly Scheduling` - schedule generation, rule engine, suggestion, manual edit, approval
-5. `Reporting & Export` - headcount and cost reports, PDF/Excel export
-6. `Employee Schedule View` - visibility-scoped schedule display (PWA) and notifications
+3. `Roles & Competency Matching` - line-specific and line-independent roles, employee qualifications
+4. `Leave & Sick Tracking` - leave types, leave requests, approval
+5. `Weekly Scheduling` - schedule generation, rule engine, suggestion, manual edit, approval, alternative-candidate lookup
+6. `Reporting & Export` - headcount and cost reports, PDF/Excel export
+7. `Employee Schedule View` - visibility-scoped schedule display (PWA) and notifications
 
 There is also one internal support domain:
 
-7. `Rule Engine & Notification Infrastructure`
+8. `Rule Engine & Notification Infrastructure`
 
 ---
 
@@ -220,7 +222,9 @@ Recommended frontend stack:
 - React Router
 - Tailwind
 - TanStack Query (server state/cache for schedule data)
+- `@dnd-kit/core` (drag-and-drop for the admin schedule grid - see §12.3a)
 - vite-plugin-pwa (installable PWA, service worker, manifest)
+- react-i18next (UI translation across the 6 supported locales - see §21a)
 
 ### 8.1 Frontend Requirements
 
@@ -258,7 +262,8 @@ Required base components:
 - DateRangePicker
 - Badge (for status: draft/proposed/approved/leave/sick)
 - Card
-- WeeklyScheduleGrid (admin, dense)
+- WeeklyScheduleGrid (admin, dense, drag-and-drop enabled - see §12.3a)
+- ScheduleAssignmentCard (the draggable unit within the grid: employee + shift + station)
 - WeeklyScheduleList (employee, mobile-simplified)
 - RuleViolationBanner
 - EmptyState
@@ -281,7 +286,7 @@ Recommended backend stack:
 - Business logic belongs in `Services/`, not controllers or models
 - A `shift_assignment` only triggers a notification once it belongs to an **approved** schedule
 - The rule engine must be extensible without editing existing rule classes (Strategy pattern, see §9.3)
-- SMS/email sending must be queueable and must not block the HTTP request that triggered it
+- email/push sending must be queueable and must not block the HTTP request that triggered it
 
 ### 9.2 Suggested Module Structure
 
@@ -323,7 +328,7 @@ Strategy pattern under `app/Services/RuleEngine/`:
 - `ScheduleSuggestionService` - generates a draft schedule (see §12)
 - `RuleEngine` - evaluates scheduling rules (see §9.3)
 - `ScheduleApprovalService` - transitions a schedule draft/proposed -> approved, and is the single trigger point for notifications
-- `NotificationDispatchService` - wraps Laravel's Notification system for email + MessageBird SMS, queued
+- `NotificationDispatchService` - wraps Laravel's Notification system for email + PWA Web Push, queued
 - `ScheduleExportService` - PDF/Excel generation for reports
 
 ---
@@ -335,9 +340,10 @@ Required routes (admin-facing, desktop):
 - `/login`
 - `/dashboard` - admin landing
 - `/staff` - employee list/CRUD
-- `/staff/:id` - employee detail incl. employment terms
+- `/staff/:id` - employee detail incl. employment terms and qualified roles (§11a.3)
 - `/agencies` - temp agency list/CRUD
 - `/lines` - production line list/CRUD
+- `/roles` - role list/CRUD (line-specific and line-independent, §11a.2)
 - `/shift-patterns` - shift time definitions list/CRUD
 - `/leave-requests` - leave/sick tracking and approval
 - `/schedules` - weekly schedule list
@@ -373,17 +379,40 @@ Layout rules:
 
 Desktop order from top to bottom:
 
-1. week selector and schedule status (draft/proposed/approved) with an approve action
-2. "Generate Suggestion" action, scoped to selectable lines/shifts
-3. the grid itself: rows grouped by line (plus a leadership/unassigned group), columns = the 7 days of the week; each cell shows an assignment (shift time, optional in-line task/station label) or is blank ("vrij")
+1. week selector and schedule status (draft/proposed/approved) with an approve action, disabled with an inline reason while a mandatory-coverage station is unfilled (§12.3b)
+2. "Generate Suggestion" action, scoped to selectable lines/shifts, with a `ranking_mode` toggle ("Fair" vs "Cost-based") the planner picks before generating
+3. the grid itself: rows grouped by line (plus a leadership/unassigned group), columns = the 7 days of the week; a cell can show one or more assignments (each showing shift time, role/position label, and a station-vs-secondary-task visual distinction when a person holds both at once), be blank ("vrij"), or be **unfilled** (§12.2a - a station slot the suggestion engine could not staff), with unfilled mandatory stations visually distinct from unfilled optional ones
 4. a rule-violation panel/banner that lists any current violations with a jump-to-cell link
-5. per-employee weekly hour totals in a summary column/row
+5. an unfilled-slots panel listing every slot the suggestion engine could not staff, separating **blocking** (mandatory-coverage) from advisory ones, each expandable into its ranked alternative-candidates list (§12.2a)
+6. per-employee weekly hour totals in a summary column/row
 
 Layout rules:
 
 - the grid must clearly distinguish `auto_suggested` vs `manual` assignments (e.g. a small icon or border style) so the planner can see what they changed
-- a cell in Vakantie or ziek state must be visually distinct from a normal shift cell and from a blank "vrij" cell
+- a cell in Vakantie or ziek state must be visually distinct from a normal shift cell and from a blank "vrij" cell, which must in turn be visually distinct from an **unfilled** slot (nobody qualified/available was found, vs. nobody was ever needed there)
+- when an employee holds a station for only part of a shift (a manual time-split, §11a.3b), the cell must show the split visually (e.g. two stacked segments with their time ranges) rather than implying they held one role for the whole shift
 - editing a cell must show any new rule violation inline, immediately, without a page reload
+- every assignment card in the grid is draggable; dropping it onto a different line/shift/day cell moves that person there - see §12.3a for the full drag-and-drop behavior
+- clicking an unfilled slot (or any filled slot, to ask "who else could do this?") opens the ranked alternative-candidates list (§12.2a) inline or in a side panel, showing each candidate's exclusion reason and rank
+
+### 10A.2a Roles (Admin)
+
+Desktop order from top to bottom (list):
+
+1. filter bar: line (or "line-independent"), role kind (station/secondary task)
+2. table grouped by line (then a line-independent group), each row showing name, kind, and (for a station) whether it requires coverage, or (for a secondary task) its attachment mode and target
+
+Desktop order from top to bottom (form):
+
+1. name and line selection (or "line-independent")
+2. role kind selector (station / secondary task) - selecting one changes which of the following fields appear
+3. if station: a `requires_coverage` toggle (on by default)
+4. if secondary task: an attachment mode selector (station-attached, with a station picker limited to the same line if one is chosen; line-attached; unattached)
+
+Layout rules:
+
+- the form must not show `requires_coverage` for a secondary task, and must not show the attachment mode selector for a station - these fields are mutually exclusive by role kind, not just conditionally relevant
+- when attachment mode is "station-attached," the station picker should only list stations on the same line as this secondary task (or, if this task is being created as line-independent, only line-independent stations - though this combination is expected to be rare per §11a.2)
 
 ### 10A.3 Staff List / Detail (Admin)
 
@@ -397,11 +426,14 @@ Desktop order from top to bottom (detail):
 1. identity block (name, contact, phone, email)
 2. employment block (type, agency if applicable, hourly rate, default line)
 3. employment terms block (max weekly hours, effective dates)
-4. recent assignment history
+4. qualified roles block: a checklist/multi-select of all `roles` (grouped by line, plus a line-independent group, and within each group separated into stations vs. secondary tasks) showing which ones this employee is currently qualified for, editable inline
+5. recent assignment history
 
 Layout rules:
 
 - employment terms must be visibly editable independent of the base identity fields, since they change on a different cadence
+- the qualified roles block must make the line-specific vs. line-independent distinction visually obvious (e.g. grouped headers), since "Dough Prep - Line 1" and "Dough Prep - Line 3" look similar but are unrelated qualifications (§11a.2)
+- the qualified roles block must also make the station-vs-secondary-task distinction visible, since a secondary task qualification is meaningless without an accompanying station qualification (§11a.3b)
 
 ### 10A.4 Leave Requests (Admin)
 
@@ -437,6 +469,22 @@ Layout rules:
 - default view on load is always "my own shifts", even if the user has broader visibility - broader scope is an expansion, not the default
 - this screen must be installable as a PWA and usable offline for the currently-cached week
 
+### 10A.6a Account Creation
+
+Mobile/desktop order from top to bottom (this screen is used by both an admin creating their own account and an admin creating an employee's account, so it must work at both sizes):
+
+1. standard identity fields (name, email, password, phone)
+2. language selector - one of the six supported locales (§21a.4), required, no default selected
+3. a short, one-sentence explanation of why installing the app matters ("Install this app on your phone to get notified the moment your schedule changes.") followed by the platform-specific install step (§21.2a):
+   - on a detected Android/Chrome-family browser: a single "Add to Home Screen" button
+   - on a detected iOS/Safari browser: a small numbered visual guide (Share icon → "Add to Home Screen")
+4. the account-creation submit action
+
+Layout rules:
+
+- the install step must read as a helpful recommendation alongside registration, not a gate - the submit action is never disabled by whether the employee has installed the app yet
+- the install step's copy and visuals must themselves be localized once a language is picked in step 2, consistent with the rest of the product (§21a.3)
+
 ---
 
 ## 11. Staff & Agencies Module Specification
@@ -449,15 +497,101 @@ Maintain an accurate, typed record of every person who can be scheduled, includi
 
 - an employee is either `vast` (permanent) or `uitzendkracht` (temp-agency); this is a single enum field, not a role hierarchy, because scheduling rules apply identically to both types (confirmed with the user) - the only difference is cost and agency attribution
 - `flex` and `VZM`, observed as informal labels in the factory's current paper schedule, are both temp-agency categories and are represented as rows in the `agencies` table, not as special-cased employee types
-- an agency-linked employee must have an `agency_id` and should have an `hourly_rate` distinct from permanent-staff cost handling
+- an agency-linked employee must have an `agency_id` and an `hourly_rate` (temp-agency staff are always billed hourly)
+- a permanent (`vast`) employee has a `pay_type` of either `hourly` (with `hourly_rate` set) or `monthly` (with `monthly_salary` set), so cost-based scheduling (§12.2) has a real per-hour cost to compare even for salaried staff (a monthly salary is converted to an effective hourly cost using the employee's contracted hours, for ranking purposes only - it is not a payroll calculation)
 - a `default_line_id` on an employee is a weighting/default hint only for the suggestion engine - it never hard-restricts which line an employee can be assigned to, since the real schedules show staff moving between lines within the same week
 - leadership/management staff (e.g. "Leiding" in the current paper schedule) are modeled as employees with `default_line_id = null`
+- separately from `default_line_id`, each employee has an explicit set of **qualified roles** (see §11a) - which line-specific or line-independent positions they are allowed to be automatically scheduled into
 
 ### 11.3 Acceptance Criteria
 
 - an admin can create, edit, and deactivate an employee of either type
 - an admin can create and edit agencies, and link/unlink an employee to one
 - an admin can set and later change an employee's `max_weekly_hours` without losing the history of the previous value (see §17, `employment_terms`)
+- an admin can view and edit an employee's qualified roles (§11a) from the employee detail screen
+
+---
+
+## 11a. Roles & Competency Matching Module Specification
+
+### 11a.1 Goal
+
+Model the fact that not every employee can safely or legally be put into every position, and stop the suggestion engine from proposing assignments outside what a person is actually qualified to do - while still letting the admin override this manually when they know better than the system does.
+
+### 11a.1a Setup Order
+
+The admin configures the factory's structure in a specific, dependency-driven order, reflected in the Build Order (§24) and enforced loosely by the UI (later screens reference earlier ones):
+
+1. **Lines** (§17.5) - the physical production lines exist first, since almost everything else attaches to one.
+2. **Work stations** (`role_kind = station`, §11a.2) - created next, each usually (not always) tied to one line, so line-based cost and headcount reporting (§14) can attribute a station's cost to its line.
+3. **Secondary tasks** (`role_kind = secondary_task`, §11a.2) - created after stations, since a secondary task can optionally reference a station, a line, or neither (§11a.2a).
+4. **Employees** (§11) - created last among these, since qualifying an employee (§11a.3) requires the stations and secondary tasks to already exist to check boxes against.
+
+### 11a.2 Role Types
+
+A **role** represents a position an employee can be assigned to, and comes in two kinds along two independent axes.
+
+**By scope:**
+
+- **line-independent roles** - apply across the whole factory regardless of which line the shift is on (e.g. "Shift Supervisor" / "Vardiya Şefi")
+- **line-specific roles** - apply only to one particular line, and qualification on one line does not imply qualification on another (e.g. "Dough Prep - Line 1" and "Dough Prep - Line 3" are two separate roles, even though they sound like the same task - an employee qualified for one is not automatically qualified for the other, since the user explicitly confirmed a person qualified for dough prep on one line may not be qualified on a different line)
+
+**By kind** (`role_kind`):
+
+- **station** - a physical work position on the line that the shift genuinely cannot run without (e.g. "Dough Prep", "Cutting", "Dipping"). Almost always line-specific in practice (so line-based cost/headcount reporting, §14, can attribute its cost correctly), though the data model does not forbid a line-independent station. A station role is flagged `requires_coverage = true` by default and drives the mandatory-coverage behavior in §11a.3a. An employee can hold exactly one station at any given moment in time within a shift (§11a.3b) - stations are mutually exclusive at the same instant.
+- **secondary task** - an additional responsibility layered onto whoever is already working a station during that time (e.g. "Silo Watch," "Sourdough Lead"). A secondary task assignment always requires the employee to already hold a station assignment for the overlapping time window - it cannot exist on its own. Unlike a station, a secondary task's *attachment* is one of three independent modes, set on the role itself via `attachment_type`:
+  - **station-attached** (`attachment_type = station`, with `attached_station_role_id` set) - only makes sense alongside one specific station (e.g. a task that only applies while working "Dipping" on Line 3)
+  - **line-attached** (`attachment_type = line`, with `line_id` set) - can be layered onto any station on that one line, but not on other lines
+  - **unattached** (`attachment_type = none`) - fully independent of line or station, available to be layered onto anyone holding any station anywhere (e.g. "Shift Supervisor")
+
+This replaces the earlier free-text `station` field (previously seen on `shift_assignments`, e.g. `"deeg"`, `"snij"`, `"doop"`, `"draai"`) with a structured, queryable concept: those station labels observed in the factory's paper schedule become actual `roles` records with `role_kind = station`, most of them line-specific.
+
+### 11a.3 Employee-Role Qualification
+
+- an employee can be qualified for any number of roles, via a simple many-to-many mapping (`employee_line_roles`, despite the name covering both line-specific and line-independent roles - see §17)
+- the suggestion engine (§12.2) will only ever automatically propose an employee for a role they are qualified for
+- an admin can add or remove an employee's qualifications at any time from the employee detail screen (§11.3) or from a dedicated role-management screen
+
+### 11a.3a Mandatory Coverage for Station Roles
+
+- when creating or editing a **station** role, the admin sets `requires_coverage` (default `true` for stations, always `false` for secondary tasks): if enabled, the suggestion engine must place at least one qualified, rule-compliant employee into that station for every shift it is scheduled to run, and **the schedule cannot be approved while a `requires_coverage` station has zero assignments** for a shift it covers - this is a hard block on approval, not a dismissible warning, since the user was explicit that a mandatory station must always have someone assigned
+- if `requires_coverage` is on and the suggestion engine's candidate pool for that station/shift/day is empty, the schedule is not silently left incomplete - it surfaces in the unfilled-slots panel (§12.2a) as a blocking item, distinct from a normal (non-blocking) unfilled slot, and the planner must resolve it (via the alternative-candidates list, a manual assignment, or an explicit qualification override) before approval will succeed
+- a **secondary task**'s coverage is never mandatory in this sense - `requires_coverage` is not offered as an option when `role_kind = secondary_task`, since a secondary task's presence depends entirely on whether the underlying station assignment exists
+
+### 11a.3b Multiple Roles Per Person & Time-Split Assignments
+
+- a single employee can hold **more than one role within the same shift**, but never more than one **station** at the exact same moment - stations are time-exclusive, secondary tasks are not (an employee can hold one station plus any number of secondary tasks concurrently, since a secondary task rides on top of an existing station assignment rather than competing with it)
+- a `shift_assignment` for a station role may cover only part of a shift's full time range: the admin can manually split a shift into consecutive, non-overlapping time segments and assign a different station to each (e.g. Ahmet on "Dough Prep" for the shift's first 2 hours, then "Cutting" for the remaining 6) - see the `starts_at`/`ends_at` fields added to `shift_assignments` in §17.8
+- the suggestion engine itself never generates a time-split assignment automatically - splitting a shift into multiple station segments is always a manual, deliberate admin action (via the assignment form or by editing an existing assignment's time range); the engine's automatic suggestions always cover a station role for the assignment's full shift duration
+- the application layer must reject any attempt to create two station assignments for the same employee with overlapping time ranges on the same day, while explicitly allowing overlapping **secondary task** assignments (since those don't compete with a station) and allowing a secondary task assignment to overlap its own underlying station assignment (that's the expected, required relationship)
+- a station role can have **more than one employee assigned to it at the same time** - `requires_coverage` guarantees a minimum of one via the suggestion engine, but the admin can manually add additional people to the same station/shift/day without limit
+
+### 11a.3c Secondary Task Assignment: Fairness & Line Priority
+
+Once the suggestion engine has filled all station slots for a day/shift (§12.2, step 3), it makes a second pass to auto-assign secondary tasks, governed by two rules working together:
+
+- **Line priority first**: for a **line-attached** secondary task (§11a.2), the candidate pool is restricted, before ranking, to employees who already hold a station assignment on that task's line for the overlapping time window - an employee working a different line that shift is never considered for it. A **station-attached** task is restricted the same way, but further narrowed to employees currently holding that exact station. An **unattached** task's candidate pool is simply everyone qualified and already holding some station that shift (any line).
+- **Fairness second**: within whatever candidate pool the priority rule above produces, the employee with the fewest total secondary-task assignments **so far**, counted across all secondary task types combined (not per-task-type - confirmed by the user, since a person who picks up many different small tasks should still be treated as already carrying a fair share), is selected. This reuses the same `fair` scoring concept as station assignment (§12.2) but with a separate counter - a person's number of station shifts and their number of secondary-task assignments are tracked and balanced independently, since one is mandatory coverage and the other is supplemental load.
+- Both rules apply regardless of the schedule's `ranking_mode` (§12.2) - fairness for secondary tasks is not affected by choosing `cost` mode for station assignment, since cost-based station selection and fair secondary-task distribution are answering different questions (who's cheapest to staff a mandatory position vs. who's least loaded with extra duties).
+- Like stations, this automatic pass only ever assigns **qualified** employees (`employee_line_roles`, §11a.3); if no qualified, line-eligible candidate holds a station that shift, the secondary task slot is left unfilled and appears in the unfilled-slots panel (§12.2a) as advisory (never blocking - only station `requires_coverage` blocks approval, §12.3b).
+- the planner can always manually reassign a secondary task afterward, same as any other assignment (§12.3, §12.3a)
+
+### 11a.4 Admin Override
+
+- the suggestion engine's role restriction is a **soft rule for automatic suggestions only** - it is not a hard database constraint on `shift_assignments`
+- an admin can still manually assign (via the assignment form, §12.2a, or via drag-and-drop, §12.3a) any employee to any line/role combination they are not qualified for; this is flagged the same way other manual overrides are (visually distinct, logged), but never blocked
+- assigning an employee to a role they aren't qualified for does **not** automatically grant them that qualification going forward - qualification is managed explicitly, separately from any single assignment
+
+### 11a.5 Acceptance Criteria
+
+- creating a role can be scoped to one specific line or left line-independent
+- creating a role sets its `role_kind` (station or secondary task); `requires_coverage` is only configurable for stations
+- the suggestion engine never proposes an employee for a line-specific role they aren't qualified for on that specific line
+- an admin can still manually place an unqualified employee into a slot, with the system clearly indicating this is a qualification override
+- when no qualified candidate exists for a slot, the system surfaces the ranked alternative-candidate list from §12.2a instead of silently leaving the slot empty
+- a schedule with an empty `requires_coverage` station for a scheduled shift cannot be approved until it is resolved
+- an employee can never end up with two overlapping station assignments on the same day, but can hold a secondary task at the same time as their station, and can hold a station across a split time range with a different station before/after
+- a station can have multiple employees manually assigned to it at once, even though the suggestion engine only guarantees one
 
 ---
 
@@ -471,17 +605,57 @@ Let a planner generate a rule-aware draft for a given week across 3 lines and 3 
 
 `ScheduleSuggestionService`:
 
-1. Input: `week_start_date`, plus which lines/shifts to generate for.
-2. Build the eligible candidate pool: `employees.is_active = true` AND no approved leave/sick record covering that specific day (`leave_requests.start_date <= work_date <= end_date AND status = 'approved'`), computed independently per day since a person may be eligible some days of the week and not others.
-3. For each day x line x shift slot: run the `RuleEngine` against each candidate (would assigning this slot exceed this person's `max_weekly_hours`?), drop rule-violating candidates, rank the remainder by a simple fairness score (fewest hours assigned so far this week wins), and select the required headcount for that slot.
-4. Write the selected assignments into `shift_assignments` with `status = proposed`, `source = auto_suggested`.
-5. The planner reviews the grid, edits freely (any manual change is marked `source = manual`; the `RuleEngine` re-evaluates on every edit and updates the violation panel), then calls "Approve," which transitions `schedules.status = approved` and triggers §12.4.
+1. Input: `week_start_date`, which lines/shifts/roles to generate for, and a `ranking_mode` chosen by the planner: `fair` or `cost` (this mode governs **station** assignment only - secondary-task assignment always follows the fixed fairness logic in §11a.3c regardless of `ranking_mode`).
+2. Build the eligible candidate pool per slot: `employees.is_active = true` AND no approved leave/sick record covering that specific day (`leave_requests.start_date <= work_date <= end_date AND status = 'approved'`), computed independently per day since a person may be eligible some days of the week and not others, **AND qualified for the slot's role** per `employee_line_roles` (§11a.3) - a slot for a line-specific role only considers employees qualified for that exact line+role combination; a slot for a line-independent role considers anyone qualified for that role regardless of line.
+3. For each day x line x shift x **station**-role slot: run the `RuleEngine` against each qualified candidate (would assigning this slot exceed this person's `max_weekly_hours`?), drop rule-violating candidates, then rank the remainder according to `ranking_mode` and select exactly one employee for that slot (the engine always aims to satisfy `requires_coverage` with one person per station - a manual step is required afterward to add a second person to the same station, per §11a.3b):
+   - `fair` - fewest hours assigned so far this week wins (the original, default fairness score)
+   - `cost` - lowest effective hourly cost wins (agency `hourly_rate`, or permanent staff's `hourly_rate`/salary-derived effective hourly cost, per §11.2); ties broken by the `fair` score so cost mode does not repeatedly overload the single cheapest person
+4. Once all station slots for a day/shift are resolved (filled or flagged unfilled), make a second pass to auto-assign **secondary task** slots per the line-priority-then-fairness logic in §11a.3c.
+5. Write the selected assignments into `shift_assignments` with `status = proposed`, `source = auto_suggested`, each covering the slot's full shift duration (`starts_at`/`ends_at` left null - see §17.8).
+6. The planner reviews the grid, edits freely (any manual change is marked `source = manual`; the `RuleEngine` re-evaluates on every edit and updates the violation panel), then calls "Approve," which transitions `schedules.status = approved` and triggers §12.4 - unless a mandatory-coverage station is still unfilled, per §12.3b.
+
+This is a slot-by-slot ranking choice, not a full-week cost optimizer (no constraint solver) - consistent with the rule-based *suggestion* approach in §5.2, just with a second ranking criterion the planner can pick.
+
+### 12.2a Unfillable Slots & Alternative Candidates
+
+If step 2 above produces zero qualified, rule-compliant candidates for a given day x line x shift x station slot, the suggestion engine does not just leave it silently blank:
+
+- the slot is flagged as **unfilled** in the resulting draft, distinct from an intentionally-unstaffed slot; if the station's `requires_coverage` is `true` (§11a.3a), it is additionally flagged as **blocking** - it will prevent approval per §12.3b until resolved, whereas a non-mandatory unfilled slot is advisory only
+- the API response and the schedule grid surface a **ranked alternative-candidates list** for that specific slot: every employee who is *not* qualified for that exact line+role (or who *would* violate a rule, e.g. exceed `max_weekly_hours`), ordered by the same `ranking_mode` the planner chose (fair or cost), each annotated with *why* they were excluded from the automatic pool (e.g. "not qualified for Dough Prep - Line 3", or "would exceed weekly hours by 4")
+- this alternative list is advisory only - selecting someone from it and assigning them is a manual action (via the assignment form, §12.2b, or drag-and-drop, §12.3a) and is recorded as `source = manual` like any override
+- the same alternative-candidate lookup is available on demand for any already-filled slot too (not just unfilled ones), so the planner can ask "who else, ranked, could go here?" before deciding to move someone via drag-and-drop
+
+### 12.2b Manual Assignment Screen
+
+In addition to editing cells directly in the grid or dragging cards, the admin has a dedicated assignment form (accessible from a grid cell or the alternative-candidates list) to assign a specific employee to a specific day/line/shift/role slot:
+
+- the form defaults to showing only qualified, rule-compliant candidates for the selected slot
+- a "show all employees" toggle reveals the full staff list, including unqualified employees, clearly marked as requiring a qualification override (§11a.4)
+- submitting with an unqualified employee selected requires an explicit confirmation step (not a silent save), to avoid accidental qualification-bypassing assignments
 
 ### 12.3 Manual Editing Rules
 
 - a rule violation blocks nothing - it is a visible warning only
 - every edit re-runs the affected employee's rule checks so the violation panel is always current
 - an approved schedule can still be edited afterward; each post-approval edit re-triggers the notification flow (§12.4) for the affected employee(s)
+
+### 12.3a Drag-and-Drop Editing
+
+Once a suggestion has been generated (or at any later point while editing an existing schedule), the planner can move a person's assignment visually instead of using a form:
+
+- every assignment card in the `WeeklyScheduleGrid` (§8.3) is draggable
+- dropping a card onto a different line/shift/day cell re-assigns that person to the new `line_id`, `shift_pattern_id`, and/or `work_date` - a single drag can change any combination of the three (e.g. moving someone from Lijn2's morning shift on Tuesday to Lijn1's evening shift on Wednesday in one action)
+- a drag-and-drop move is a `shift_assignments` update like any other manual edit: it is marked `source = manual`, the `RuleEngine` re-evaluates the moved employee immediately, and the violation panel updates without a page reload (§16.4)
+- dropping onto an occupied cell does not silently overwrite the existing assignment - the UI must make clear whether the drop adds a second person to that slot or is rejected, depending on whether the slot still has open headcount (see open item on required headcount per slot, §26)
+- dragging a card onto a blank cell ("vrij" for that person that day) creates a new assignment there; dragging a card off the grid entirely (e.g. onto a "remove" drop zone) deletes that assignment, returning the person to "vrij" that day
+- dropping a card onto a cell whose line+role the dragged employee is not qualified for (§11a) does not get silently rejected or silently allowed - the drop shows an inline confirmation ("Ahmet is not qualified for Dough Prep - Line 3 - assign anyway?") before committing, so a qualification override via drag-and-drop is always a deliberate, visible decision, consistent with §11a.4
+- drag-and-drop is available on the admin desktop grid only - it is not part of the employee-facing PWA view (§15), which is read-only
+
+### 12.3b Approval Blocking for Mandatory Coverage
+
+This is the **one exception** to the "violations are warnings, never blocks" philosophy that governs the rest of this spec (§4.2, §16.4): a `requires_coverage` station role (§11a.3a) with zero assignments for a shift it is scheduled to run makes that schedule **impossible to approve**, full stop - the "Approve" action is disabled and the reason is shown inline, pointing at the specific unfilled mandatory station(s) via the unfilled-slots panel (§12.2a).
+
+This is a deliberate, narrow exception: the user was explicit that a station the shift genuinely cannot run without must always have someone assigned, unlike every other constraint in this system (max weekly hours, role qualification) where the admin's judgment can override the system's. The planner resolves a mandatory-coverage block the same way as any unfilled slot - accept an alternative candidate (§12.2a), manually assign someone including via a qualification override (§11a.4), or reduce the shift's planned coverage requirement - but cannot simply dismiss the warning and proceed.
 
 ### 12.4 Notification Trigger
 
@@ -494,6 +668,7 @@ Let a planner generate a rule-aware draft for a given week across 3 lines and 3 
 - the suggestion never proposes a slot for someone with approved leave/sick covering that day
 - the suggestion never proposes a slot that would push someone over their personal `max_weekly_hours` (unless the planner manually overrides afterward)
 - approving a schedule is a single explicit action, and cannot be un-done silently
+- a planner can drag a person's assignment card from one line/shift/day cell to another and see the change persist and re-validate immediately
 
 ---
 
@@ -568,14 +743,15 @@ This is implemented as a `visibility_scope` field (`own` / `line` / `company`, d
 ### 15.4 Notification Requirements
 
 - triggered only by changes to an **approved** schedule (see §12.4)
-- delivered to both the employee's registered **email** and **phone number** (SMS via MessageBird)
-- a `ScheduleChanged` Laravel notification class implements `toMail` and a MessageBird-backed SMS channel; both are queued so sending never blocks the approval/edit request
+- delivered on both channels at once, to the employee's registered **email**, and as a **push notification** to any device where they've installed the PWA and granted notification permission (see §20)
+- a `ScheduleChanged` Laravel notification class implements `toMail` and a Web Push channel; both are queued so sending never blocks the approval/edit request
+- push delivery requires the employee to have installed the PWA and granted notification permission on at least one device; if no push subscription exists or a send fails (e.g. subscription expired), it must fail independently and log without blocking or failing the email send for the same notification - email is always attempted regardless of push status
 
 ### 15.5 Acceptance Criteria
 
 - a new employee, by default, can only see their own shifts
 - an admin can change an employee's visibility scope and it takes effect immediately
-- an employee receives both an email and an SMS when an approved shift affecting them is created, changed, or removed
+- an employee with the PWA installed and notifications enabled receives both an email and a push notification when an approved shift affecting them is created, changed, or removed; an employee without the PWA installed still receives the email
 - the schedule view can be installed to a phone's home screen and opened without a browser address bar
 
 ---
@@ -589,6 +765,8 @@ Enforce scheduling constraints in a way that is transparent to the planner and e
 ### 16.2 Initial Rule
 
 - **Max Weekly Hours** - each employee has a `max_weekly_hours` value (default 40, but can be set higher or lower per person via `employment_terms`); the suggestion engine will not propose a slot that pushes someone over this limit, and a manual edit that does so is flagged as a violation (not blocked)
+
+Role qualification (§11a) is deliberately **not** implemented as a `SchedulingRule` in this engine, even though it is also a constraint on automatic suggestions: it is a hard filter on the *candidate pool* the suggestion engine builds (§12.2, step 2), not a post-hoc pass/violation check on an already-chosen candidate. The distinction matters for admin overrides - a `RuleResult` violation (like exceeding max hours) is always shown as a warning on an assignment that already exists, while a qualification mismatch is either prevented from being auto-suggested in the first place, or explicitly confirmed as an override at the moment of manual assignment (§11a.4, §12.2b). Both are equally overridable by the admin, just through different UI moments.
 
 ### 16.3 Future Rules (Architected, Not Implemented)
 
@@ -620,11 +798,14 @@ Core tables required:
 - `employees`
 - `employment_terms`
 - `lines`
+- `roles`
+- `employee_line_roles`
 - `shift_patterns`
 - `schedules`
 - `shift_assignments`
 - `leave_types`
 - `leave_requests`
+- `push_subscriptions`
 
 Optional support tables:
 
@@ -640,6 +821,7 @@ Fields:
 - `email`
 - `password`
 - `visibility_scope` (enum: `own`, `line`, `company`; default `own`)
+- `locale` (enum: `en`, `tr`, `nl`, `es`, `ro`, `uk`; required, chosen at registration, changeable later - see §22a)
 - `is_active`
 - timestamps
 
@@ -667,7 +849,10 @@ Fields:
 - `email`
 - `employee_type` (enum: `vast`, `uitzendkracht`)
 - `agency_id` nullable
-- `hourly_rate` nullable decimal
+- `pay_type` (enum: `hourly`, `monthly`; required for `vast`, always `hourly` for `uitzendkracht`)
+- `hourly_rate` nullable decimal (required when `pay_type = hourly`)
+- `monthly_salary` nullable decimal (required when `pay_type = monthly`)
+- `contracted_hours_per_week` nullable decimal (used only to derive an effective hourly cost from `monthly_salary` for cost-mode ranking, §12.2 - not a payroll figure)
 - `default_line_id` nullable
 - `is_active`
 - timestamps
@@ -693,6 +878,31 @@ Fields:
 - `code`
 - `is_active`
 - timestamps
+
+### 17.5a Roles
+
+Fields:
+
+- `id`
+- `name` (e.g. `"Dough Prep - Line 1"`, `"Shift Supervisor"`)
+- `line_id` nullable (set for a line-specific role, whether a station or a line-attached secondary task; null for a line-independent role - see §11a.2)
+- `role_kind` (enum: `station`, `secondary_task` - see §11a.2)
+- `requires_coverage` boolean (default `true` for `station`, always `false` for `secondary_task` - see §11a.3a)
+- `attachment_type` nullable (enum: `station`, `line`, `none`; only meaningful when `role_kind = secondary_task` - see §11a.2)
+- `attached_station_role_id` nullable, self-referencing FK to another `roles` row (set only when `attachment_type = station`, identifying which specific station this secondary task rides on)
+- `is_active`
+- timestamps
+
+### 17.5b Employee Line Roles
+
+Fields:
+
+- `id`
+- `employee_id`
+- `role_id`
+- timestamps
+
+This is the qualification pivot from §11a.3: a row means "this employee is qualified for this role" (and, transitively, for that role's line if it's line-specific).
 
 ### 17.6 Shift Patterns
 
@@ -728,7 +938,8 @@ Fields:
 - `line_id`
 - `shift_pattern_id` nullable
 - `work_date`
-- `station` nullable string (e.g. `"deeg"`, `"snij"`, `"doop"`, `"draai"` - in-line task/role observed in the factory's current paper schedule)
+- `role_id` nullable (the position this assignment fills, per §11a - e.g. `"Dough Prep - Line 1"`; nullable because not every historical/simple assignment needs a role, but the suggestion engine always sets it when generating role-scoped slots)
+- `starts_at` nullable time, `ends_at` nullable time (overrides the linked `shift_pattern`'s full time range for this specific assignment, enabling the manual time-split behavior in §11a.3b - e.g. an assignment covering only the first 2 hours of an 8-hour shift; null on both means "the assignment covers the shift pattern's full duration," which is what the suggestion engine always produces)
 - `status` (enum: `proposed`, `confirmed`)
 - `source` (enum: `auto_suggested`, `manual`)
 - `notes` nullable text
@@ -757,6 +968,18 @@ Fields:
 - `approved_by` nullable
 - timestamps
 
+### 17.11 Push Subscriptions
+
+Fields:
+
+- `id`
+- `employee_id`
+- `endpoint` (the browser-provided push endpoint URL)
+- `p256dh_key`, `auth_key` (the subscription's encryption keys, required by the Web Push protocol)
+- `user_agent` nullable (helps the admin/employee tell subscriptions apart if ever listed, e.g. "iPhone - Safari")
+- `is_active` (set to `false` automatically on a confirmed-expired send, §20.2a, rather than deleted - keeps a record of what existed)
+- timestamps
+
 ---
 
 ## 17A. Database Constraints and Rules
@@ -767,6 +990,7 @@ Constraints:
 
 - `email` must be unique
 - `visibility_scope` defaults to `own`
+- `locale` required, must be one of the six supported codes (`en`, `tr`, `nl`, `es`, `ro`, `uk`); no default - it is chosen explicitly at registration (§22a)
 - `is_active` defaults to `true`
 
 Indexes:
@@ -791,7 +1015,8 @@ Constraints:
 
 - `employee_type` required, enum `vast`/`uitzendkracht`
 - `agency_id` required (non-null) when `employee_type = uitzendkracht`; must be null when `employee_type = vast` - enforce at the application/validation layer, not a DB CHECK, since Postgres cross-column conditional constraints add migration friction for little benefit here
-- `hourly_rate` nullable, but expected to be set for `uitzendkracht`
+- `pay_type` required; forced to `hourly` at the application layer when `employee_type = uitzendkracht`
+- `hourly_rate` required when `pay_type = hourly`; `monthly_salary` and `contracted_hours_per_week` required when `pay_type = monthly` - enforced at the application/validation layer
 - `default_line_id` nullable, never a hard scheduling constraint
 - `is_active` defaults to `true`
 
@@ -827,6 +1052,39 @@ Indexes:
 
 - unique index on `code`
 
+### 17A.5a Roles
+
+Constraints:
+
+- `name` required
+- `line_id` nullable - null means the role is line-independent (e.g. "Shift Supervisor"); set means it only applies to that one line (e.g. "Dough Prep - Line 1") and does not imply qualification on any other line, even for a role with an identical-sounding name
+- `role_kind` required, enum `station`/`secondary_task`
+- `requires_coverage` boolean; forced to `false` at the application layer when `role_kind = secondary_task` (not user-configurable in that case, per §11a.3a); defaults to `true` when `role_kind = station`
+- `attachment_type` required when `role_kind = secondary_task`; forced to `null` at the application layer when `role_kind = station` (a station's own coverage is what matters, not what it's "attached to")
+- `attached_station_role_id` required (non-null) when `attachment_type = station`; must reference a row where `role_kind = station`; must be null for any other `attachment_type`; when `attachment_type = station`, this secondary task's own `line_id` must match the referenced station's `line_id` if the station has one - enforced at the application/validation layer
+- `is_active` defaults to `true`
+
+Indexes:
+
+- foreign key on `line_id` with cascade delete (a role scoped to a line makes no sense once that line is gone; a line-independent role is unaffected since `line_id` is null)
+- foreign key on `attached_station_role_id` referencing `roles.id`, with cascade delete (a secondary task attached to a specific station makes no sense once that station role is removed)
+- index on `line_id`
+- index on `(role_kind, requires_coverage)` (used when checking mandatory-coverage compliance before approval, §11a.3a)
+- index on `attached_station_role_id`
+
+### 17A.5b Employee Line Roles
+
+Constraints:
+
+- a given `(employee_id, role_id)` pair must be unique - an employee is either qualified for a role or not, no duplicate rows
+
+Indexes:
+
+- unique composite index on `(employee_id, role_id)`
+- foreign key on `employee_id` with cascade delete
+- foreign key on `role_id` with cascade delete
+- index on `role_id` (to efficiently look up "who is qualified for this role" when building the suggestion candidate pool, §12.2)
+
 ### 17A.6 Shift Patterns
 
 Constraints:
@@ -858,7 +1116,9 @@ Constraints:
 
 - `status` defaults to `proposed`
 - `source` required, defaults to `auto_suggested` when created by the suggestion engine
-- a given `(employee_id, work_date)` should not have overlapping shift times across two rows - enforced at the application layer when creating/editing an assignment, since overlap depends on the linked `shift_pattern`'s start/end time, not a simple column comparison
+- a given `(employee_id, work_date)` should not have two **station**-role assignments with overlapping effective time ranges (`starts_at`/`ends_at` if set, otherwise the linked `shift_pattern`'s full start/end time) - enforced at the application layer, since overlap depends on resolving each row's effective time range, not a simple column comparison; **secondary_task** assignments are explicitly exempt from this check, including when they overlap their own underlying station assignment (§11a.3b)
+- if `role_id` refers to a line-specific role, its `line_id` must match the assignment's own `line_id` - enforced at the application/validation layer, not a DB constraint, since it's a cross-table conditional check
+- a **secondary_task** assignment requires at least one overlapping **station** assignment for the same employee and day to already exist - enforced at the application layer at creation time
 
 Indexes:
 
@@ -866,8 +1126,10 @@ Indexes:
 - foreign key on `employee_id` with cascade delete
 - foreign key on `line_id` with `restrictOnDelete`
 - foreign key on `shift_pattern_id` with `nullOnDelete`
+- foreign key on `role_id` with `nullOnDelete`
 - index on `(employee_id, work_date)`
 - index on `(schedule_id, line_id, work_date)`
+- index on `(schedule_id, line_id, role_id, work_date)` (used when checking headcount/candidates for a specific role slot)
 
 ### 17A.9 Leave Requests
 
@@ -884,12 +1146,26 @@ Indexes:
 - index on `(employee_id, start_date, end_date)`
 - index on `status`
 
+### 17A.9a Push Subscriptions
+
+Constraints:
+
+- `endpoint` must be unique (the same browser subscription should never be stored twice)
+- `is_active` defaults to `true`
+
+Indexes:
+
+- unique index on `endpoint`
+- foreign key on `employee_id` with cascade delete
+- index on `(employee_id, is_active)` (used when fetching an employee's active subscriptions to push to, §20.2)
+
 ### 17A.10 Referential and Deletion Rules
 
-- deleting an employee must cascade to their own `shift_assignments`, `employment_terms`, and `leave_requests` (historical schedule data for other employees must remain intact)
-- deleting a line must not be allowed while active `shift_assignments` reference it (`restrictOnDelete`) - deactivate instead of deleting
+- deleting an employee must cascade to their own `shift_assignments`, `employment_terms`, `leave_requests`, and `employee_line_roles` (historical schedule data for other employees must remain intact)
+- deleting a line must not be allowed while active `shift_assignments` reference it (`restrictOnDelete`) - deactivate instead of deleting; deleting a line does cascade-delete its line-specific `roles` (and, transitively, their `employee_line_roles`), since a role scoped to a deleted line no longer means anything
 - deleting a shift pattern should not destroy historical assignment records; prefer `nullOnDelete` so history remains stable
 - deleting an agency must not cascade-delete its employees; use `nullOnDelete` on `employees.agency_id` and require the admin to reassign or deactivate those employees explicitly
+- deleting a role should not destroy historical assignment records that reference it; prefer `nullOnDelete` on `shift_assignments.role_id` (the assignment's line/date/employee stays meaningful even if the specific role label is later removed)
 
 ### 17A.11 Migration Rule
 
@@ -945,18 +1221,53 @@ Response example:
       "agency": { "id": 3, "name": "VZM", "code": "VZM" },
       "default_line": { "id": 2, "name": "Lijn 2", "code": "L2" },
       "employment_terms": { "max_weekly_hours": 40 },
+      "pay_type": "hourly",
+      "hourly_rate": 18.5,
       "is_active": true
     }
   ]
 }
 ```
 
-### 18.3 Lines & Shift Patterns
+### 18.3 Lines, Roles & Shift Patterns
 
 - `GET|POST /v1/lines`
 - `GET|PUT|DELETE /v1/lines/{line}`
+- `GET|POST /v1/roles`
+- `GET|PUT|DELETE /v1/roles/{role}`
+- `GET|PUT /v1/employees/{employee}/qualified-roles` (list/replace an employee's `employee_line_roles`, §11a.3)
 - `GET|POST /v1/shift-patterns`
 - `GET|PUT|DELETE /v1/shift-patterns/{shiftPattern}`
+
+#### Example: `POST /v1/roles`
+
+Request example:
+
+```json
+{
+  "name": "Dough Prep - Line 3",
+  "line_id": 3,
+  "role_kind": "station",
+  "requires_coverage": true
+}
+```
+
+`requires_coverage` is rejected by validation if `role_kind` is `"secondary_task"` (§17A.5a) - a secondary task is never independently mandatory.
+
+#### Example: `POST /v1/roles` (line-attached secondary task)
+
+Request example:
+
+```json
+{
+  "name": "Silo Watch - Line 3",
+  "line_id": 3,
+  "role_kind": "secondary_task",
+  "attachment_type": "line"
+}
+```
+
+A `station`-attached example would instead set `"attachment_type": "station"` and `"attached_station_role_id": 9` (referencing an existing station role, whose `line_id` must match if the station has one); an `unattached` example (e.g. "Shift Supervisor") would omit `line_id` entirely and set `"attachment_type": "none"`.
 
 ### 18.4 Leave
 
@@ -966,6 +1277,25 @@ Response example:
 - `POST /v1/leave-requests/{leaveRequest}/approve`
 - `POST /v1/leave-requests/{leaveRequest}/reject`
 
+### 18.4a Push Subscriptions
+
+- `POST /v1/push-subscriptions` - register a subscription for the current employee (§20.2a)
+- `DELETE /v1/push-subscriptions/{pushSubscription}` - explicitly unregister one (e.g. from a "disable notifications" control in settings)
+
+#### Example: `POST /v1/push-subscriptions`
+
+Request example (the shape returned by the browser's `PushSubscription.toJSON()`):
+
+```json
+{
+  "endpoint": "https://fcm.googleapis.com/fcm/send/...",
+  "keys": {
+    "p256dh": "BN4G...",
+    "auth": "k8Jd..."
+  }
+}
+```
+
 ### 18.5 Scheduling
 
 - `GET|POST /v1/schedules`
@@ -974,6 +1304,7 @@ Response example:
 - `POST /v1/schedules/{schedule}/approve`
 - `GET|POST /v1/schedules/{schedule}/assignments`
 - `PUT|DELETE /v1/shift-assignments/{assignment}`
+- `GET /v1/schedules/{schedule}/slots/{line}/{role}/{workDate}/candidates` - ranked alternative-candidates list for one slot (§12.2a), query param `ranking_mode` (`fair`|`cost`)
 
 #### Example: `POST /v1/schedules/{schedule}/suggest`
 
@@ -982,9 +1313,12 @@ Request example:
 ```json
 {
   "line_ids": [1, 2, 3],
-  "shift_pattern_ids": [1, 2, 3, 4, 5, 6]
+  "shift_pattern_ids": [1, 2, 3, 4, 5, 6],
+  "ranking_mode": "cost"
 }
 ```
+
+`ranking_mode` is `"fair"` or `"cost"` (see §12.2); defaults to `"fair"` if omitted.
 
 Response example:
 
@@ -993,7 +1327,7 @@ Response example:
   "data": {
     "schedule_id": 14,
     "status": "proposed",
-    "assignments_created": 63,
+    "assignments_created": 61,
     "violations": [
       {
         "employee_id": 12,
@@ -1002,10 +1336,66 @@ Response example:
         "severity": "warning",
         "message": "This assignment would put Ahmet Yilmaz at 44 hours this week (limit: 40)."
       }
+    ],
+    "unfilled_slots": [
+      {
+        "line_id": 3,
+        "role_id": 9,
+        "role_name": "Dough Prep - Line 3",
+        "work_date": "2026-08-05",
+        "shift_pattern_id": 4,
+        "reason": "no_qualified_candidate",
+        "blocking": true
+      }
     ]
   }
 }
 ```
+
+`blocking: true` means this slot's role has `requires_coverage = true` (§11a.3a) - the schedule cannot be approved (§12.3b) until it is resolved. `blocking: false` is advisory only.
+
+#### Example: `PUT /v1/shift-assignments/{assignment}` (manual time-split)
+
+Request example:
+
+```json
+{
+  "role_id": 11,
+  "starts_at": "08:00",
+  "ends_at": "10:00"
+}
+```
+
+This narrows an existing 08:00-16:00 assignment down to its first two hours, freeing the employee to hold a different station for the remainder of the shift via a second assignment row (§11a.3b) - rejected by validation if it would overlap another station assignment for the same employee and day.
+
+#### Example: `GET /v1/schedules/{schedule}/slots/3/9/2026-08-05/candidates?ranking_mode=cost`
+
+Response example:
+
+```json
+{
+  "data": [
+    {
+      "employee_id": 27,
+      "name": "Elif Demir",
+      "qualified": false,
+      "exclusion_reason": "Not qualified for Dough Prep - Line 3",
+      "effective_hourly_cost": 17.0,
+      "hours_so_far_this_week": 24
+    },
+    {
+      "employee_id": 12,
+      "name": "Ahmet Yilmaz",
+      "qualified": true,
+      "exclusion_reason": "Would exceed max weekly hours (44 > 40)",
+      "effective_hourly_cost": 18.5,
+      "hours_so_far_this_week": 40
+    }
+  ]
+}
+```
+
+Candidates are ranked by the requested `ranking_mode`; `qualified: false` candidates are still listed (per §11a.4, the admin can override), always alongside their exclusion reason so the planner knows exactly what they'd be overriding.
 
 ### 18.6 Reports
 
@@ -1060,18 +1450,30 @@ The product should not hardcode which rules are active in code paths outside con
 ### 20.2 Channels
 
 - **Email**: Laravel's built-in mail (`Notification` with `toMail`)
-- **SMS**: MessageBird (chosen by the user - Netherlands-based provider, natural fit for this Dutch-labor-context factory), via a custom notification channel, queued
+- **Push**: Web Push (the standard browser/OS push protocol), via a custom notification channel built on the `web-push` PHP library (VAPID-authenticated, no third-party notification vendor or account required), queued
+
+Both channels fire together for every notification; there is no per-employee channel preference in the initial build. Email always fires if the employee has one on file. Push fires to every active push subscription the employee has registered (potentially more than one, if they installed the PWA on more than one device) - see §20.2a.
+
+### 20.2a Push Subscription Lifecycle
+
+- when an employee installs the PWA and grants notification permission (prompted from within the app, not on first load - see §21.2), the frontend registers a **push subscription** (endpoint + keys) with the backend via `POST /v1/push-subscriptions` and stores it against that employee
+- an employee can have multiple active subscriptions (one per installed device/browser); a notification is pushed to all of them
+- a subscription that the push service reports as expired or invalid (e.g. the browser returns a 410 Gone on send) is deactivated automatically - no admin action needed, and it does not affect email delivery for that employee
+- revoking notification permission in the browser, or uninstalling the PWA, naturally stops that subscription from receiving pushes; the backend lazily deactivates it on the next failed send rather than requiring an explicit "uninstall" signal from the browser (which isn't reliably available)
 
 ### 20.3 UX Requirements
 
 - the planner sees a confirmation that notifications were queued after approving/editing an approved schedule
-- a failed SMS/email send must be logged and retryable, not silently dropped
+- a failed send on either channel (push or email) must be logged and retryable independently, without blocking or failing the other channel for the same notification
+- the PWA prompts for notification permission at a meaningful moment (e.g. right after first successful login, with a plain-language explanation of why), not silently or immediately on page load, per standard Web Push UX guidance
 
 ### 20.4 Acceptance Criteria
 
-- approving a new schedule sends one email + one SMS per affected employee
+- approving a new schedule sends one email, plus one push notification per active subscription, per affected employee
 - editing a single assignment in an already-approved schedule sends a notification only to the employee(s) whose assignment changed
 - notification sending never blocks or slows down the approval/edit HTTP response (queued)
+- a push send failure (e.g. expired subscription) does not prevent the email for the same notification from being sent, and does not surface as an error to the planner
+- an employee who has never installed the PWA still receives the email side of every notification
 
 ---
 
@@ -1088,12 +1490,72 @@ The product should not hardcode which rules are active in code paths outside con
 - `vite-plugin-pwa` integrated into the frontend build
 - a web app manifest (name, icons, theme color matching §7.2)
 - a service worker caching the employee schedule view and its current week's data
+- a service worker `push` event handler that displays a system notification when a `ScheduleChanged` push arrives (§20), and a `notificationclick` handler that opens the app to the affected week
+- a notification-permission prompt shown once, after first login, with plain-language copy explaining what it's for (§20.3) - not on page load, and not repeated if the employee dismisses or denies it (a manual "enable notifications" control remains available in settings for someone who wants to opt in later)
+
+### 21.2a Install Prompt at Account Creation
+
+Rather than waiting for the employee to discover installation on their own, the account-creation screen itself (the same screen where they pick their `locale`, §21a.4) prompts them to install the PWA, with platform-specific handling since browsers differ in what they allow:
+
+- **one sentence explaining why**, shown regardless of platform, before either flow below: something like "Install this app on your phone to get notified the moment your schedule changes." (translated per §21a.3, since this is UI copy like any other)
+- **Android / Chrome (and other browsers supporting the installation API)**: an "Add to Home Screen" button is shown directly on the account-creation screen. The frontend listens for the browser's `beforeinstallprompt` event; if it has fired (meaning the browser is willing to install this PWA), clicking the button calls the browser's native install flow immediately - the account-creation screen triggers it itself rather than waiting for the employee to find it in a browser menu.
+- **iOS / Safari**: Safari does not expose a `beforeinstallprompt` event and does not allow a webpage to trigger installation programmatically - Apple restricts this to a manual, user-driven action. When an iOS Safari user agent is detected, the account-creation screen instead shows a short, visual step-by-step guide in place of the button: "Tap the Share icon, then 'Add to Home Screen'" (with an icon/screenshot illustrating the Safari share icon), since this is the only way iOS supports the install flow.
+- neither flow blocks account creation - both are presented alongside the registration form as a recommended next step, and account creation itself succeeds whether or not the employee installs the PWA in that moment; the manual "enable notifications" / install entry point in settings (§21.2) remains available afterward for anyone who skips this step
 
 ### 21.3 Acceptance Criteria
 
 - the employee schedule view can be added to a phone's home screen
 - the most recently loaded week remains viewable without a network connection
 - opening the installed PWA does not show a browser address bar
+- granting notification permission registers a push subscription with the backend; denying it leaves the app fully usable, with email as the sole notification channel
+- on Android/Chrome, the account-creation screen's install button triggers the native install prompt directly, without the employee needing to find it in a browser menu
+- on iOS/Safari, the account-creation screen shows the manual Share → Add to Home Screen instructions instead of a button, and does not attempt to auto-trigger an install
+- skipping installation at account creation does not block or interrupt registration
+
+---
+
+## 21a. Internationalization (i18n) Specification
+
+### 21a.1 Goal
+
+Make the entire product usable, for both the `admin` and `user` roles, in any of six languages, chosen once at registration and changeable at any time afterward.
+
+### 21a.2 Supported Languages
+
+- English (`en`)
+- Turkish (`tr`)
+- Dutch (`nl`)
+- Spanish (`es`)
+- Romanian (`ro`)
+- Ukrainian (`uk`)
+
+This set is chosen to match the factory's actual workforce composition (a mixed permanent and temp-agency staff drawn from multiple nationalities), not just the admin's language.
+
+### 21a.3 Scope of Translation
+
+Everything user-facing must be translatable, not just static labels:
+
+- all frontend UI strings (admin desktop screens and the employee PWA), via `react-i18next` (or equivalent) with one JSON resource file per locale
+- backend-generated content that reaches a person directly: rule-violation messages (§16.4), the `ScheduleChanged` notification content across all three channels (§20), and validation error messages returned by the API, via Laravel's built-in localization (`lang/{locale}/*.php`)
+- day names, dates, and hour formats must be locale-aware where displayed (e.g. day-of-week headers in the schedule grid)
+
+Not required to be translated: raw data the admin enters themselves (employee names, agency names, notes/free-text fields) - only the product's own generated text.
+
+### 21a.4 Locale Selection Flow
+
+- **at registration**: the account-creation screen requires an explicit language selection before the account can be created - there is no silent default (this applies to both an admin creating their own account and an admin creating an employee's `user` account, or a future self-registration flow if one exists). This same screen also carries the PWA install prompt described in §21.2a, since both are one-time, first-run setup steps that belong together.
+- **after registration**: a locale switcher is available from the profile/settings area for both `admin` and `user` roles at any time; changing it takes effect immediately for the current session and is persisted to `users.locale` (§17.1) for all future sessions and all future notifications
+
+### 21a.5 Notification Content Localization
+
+Both notification channels (§20) are plain, freely-authored content controlled entirely by this product - unlike the earlier WhatsApp-based design, there is no third-party template pre-approval process to plan around. The `ScheduleChanged` notification's `toMail` and push-payload content are both rendered from the same Laravel `lang/{locale}/*.php` strings used elsewhere (§21a.3), in the recipient's stored `locale`, with no per-language external approval step or timeline dependency.
+
+### 21a.6 Acceptance Criteria
+
+- a new account cannot be created without explicitly picking one of the six languages
+- switching language in settings immediately changes the UI language without requiring logout
+- a rule-violation message, and an email/push notification, are generated in the recipient's stored `locale`, not the admin's or the sender's
+- adding a UI string without a translation entry for all six locales should be caught in code review/CI (e.g. a lint step comparing locale JSON key sets), not discovered by a user seeing an untranslated key
 
 ---
 
@@ -1135,6 +1597,21 @@ The product should not hardcode which rules are active in code paths outside con
 - a new shift pattern with an arbitrary start/end time can be added without a code change
 - deactivating a line does not delete historical shift assignments
 
+### Roles & Competency Matching
+
+- a role can be created as line-specific (tied to exactly one line) or line-independent
+- a role is created as a station or a secondary task, and `requires_coverage` is only ever configurable for stations
+- an employee qualified for a line-specific role on one line is never treated as qualified for the identically-named role on a different line
+- an admin can view and edit an employee's qualified roles from the staff detail screen
+- an admin can still manually assign an unqualified employee to a slot, with a required, visible confirmation step
+- a mandatory-coverage station left unfilled blocks schedule approval, with the blocking slot(s) clearly identified
+- an employee can be manually given a time-split across two different stations within one shift, and can hold a secondary task alongside a station, but can never be double-booked on two overlapping stations
+- a station can have more than one employee manually assigned to it, even though auto-suggestion only ever fills it with one
+- a secondary task can be created as station-attached, line-attached, or fully unattached, and this choice is unavailable when creating a station instead
+- suggestion generation only assigns a line-attached secondary task to an employee already working a station on that same line that shift
+- suggestion generation distributes secondary tasks by each employee's total secondary-task count across all task types, not per task type
+- an admin creating a new line-specific station before any employees exist, and only afterward qualifying employees for it, works without any ordering error in the UI
+
 ### Leave & Sick
 
 - an approved Vakantie/ziek record removes the employee from the suggestion pool for every day in range
@@ -1144,8 +1621,12 @@ The product should not hardcode which rules are active in code paths outside con
 
 - suggestion generation never proposes a slot for someone on approved leave that day
 - suggestion generation never proposes a slot that violates `MaxWeeklyHoursRule` (unless later manually overridden)
+- suggestion generation never automatically proposes an employee for a line-specific role they are not qualified for on that exact line
+- a slot with no qualified, rule-compliant candidate is flagged as unfilled and surfaces a ranked alternative-candidates list, rather than being silently left blank
 - a manual edit re-evaluates rules immediately and updates the violation panel
 - approving a schedule is a single explicit, auditable action
+- dragging an assignment card to a new line/shift/day cell persists the move and re-validates it immediately
+- dragging or manually assigning an unqualified employee into a role slot requires an explicit confirmation before it commits
 
 ### Reporting
 
@@ -1157,8 +1638,19 @@ The product should not hardcode which rules are active in code paths outside con
 
 - a new employee defaults to `own`-only visibility
 - an admin changing visibility scope takes effect immediately for that employee
-- an approved-schedule change sends both email and SMS to the affected employee
+- an approved-schedule change sends an email, and a push notification to every active subscription, for the affected employee
+- an employee who never installed the PWA still receives the email
 - the schedule PWA installs to a phone home screen and works offline for the cached week
+
+### Internationalization
+
+- registration cannot be completed without an explicit language choice
+- changing language in settings applies immediately, without logout, for both admin and employee roles
+- a rule-violation message and a schedule-change notification (email/push) are rendered in the recipient's stored locale, never the sender's
+- all six locales have complete, non-empty translation coverage for every UI string and notification template
+- on Android/Chrome, the account-creation screen's install button successfully triggers the browser's native PWA install flow
+- on iOS/Safari, the account-creation screen shows the manual install instructions instead of a non-functional button
+- account creation succeeds whether or not the employee acts on the install prompt
 
 ### Backend
 
@@ -1172,16 +1664,16 @@ The product should not hardcode which rules are active in code paths outside con
 
 Recommended implementation order:
 
-1. project skeleton: Laravel API setup, PostgreSQL, Sanctum, `spatie/laravel-permission` + role/visibility-scope seeding, React+Vite+TS skeleton, login
+1. project skeleton: Laravel API setup, PostgreSQL, Sanctum, `spatie/laravel-permission` + role/visibility-scope seeding, React+Vite+TS skeleton, `react-i18next` + Laravel localization wired in from the start with `locale` on registration (§21a), login. The account-creation screen's layout (identity fields + language selector) is built here, but its install-prompt section (§21.2a, §10A.6a) is a placeholder until step 7 - a working `beforeinstallprompt` listener needs the PWA manifest that doesn't exist yet, so wire it up properly in step 7 rather than half-building it twice.
 2. staff & agencies module (employees, employment terms, agencies) - migrations, models, controllers, resources, admin frontend screens
-3. lines & shift patterns module - migrations, models, controllers, resources, admin frontend screens
+3. lines, roles & shift patterns module - migrations, models, controllers, resources, admin frontend screens, including `roles` (station vs. secondary task, `requires_coverage`) and `employee_line_roles` (§11a) and the qualified-roles editor on the staff detail screen
 4. leave & sick tracking module - migrations, models, controllers, approval flow, admin frontend screens
-5. weekly scheduling core: `schedules`, `shift_assignments`, rule engine (`MaxWeeklyHoursRule` + disabled skeletons), `ScheduleSuggestionService`, suggest/approve endpoints, admin schedule grid
+5. weekly scheduling core: `schedules`, `shift_assignments` (including `starts_at`/`ends_at` time-split support, §11a.3b), rule engine (`MaxWeeklyHoursRule` + disabled skeletons), `ScheduleSuggestionService` (with `ranking_mode`: fair/cost, and role-qualification filtering per §12.2), suggest/approve endpoints, mandatory-coverage approval blocking (§12.3b), admin schedule grid with drag-and-drop (§12.3a), unfilled-slot flagging and the alternative-candidates lookup (§12.2a, §12.2b)
 6. reporting & export: headcount and cost reports, PDF/Excel export
-7. employee schedule view (PWA) + notifications: `visibility_scope`-aware view, `vite-plugin-pwa` setup, `ScheduleChanged` notification (email + MessageBird SMS)
-8. frontend polish: unified visual system across admin and employee views, UX refinement
+7. employee schedule view (PWA) + notifications: `visibility_scope`-aware view, `vite-plugin-pwa` setup, VAPID key generation, push-subscription registration (§20.2a), `ScheduleChanged` notification (email + Web Push), all rendered per the recipient's `locale` - this is also where the account-creation screen's install prompt (§21.2a) becomes fully functional, once the manifest and `beforeinstallprompt` plumbing it depends on exist
+8. frontend polish: unified visual system across admin and employee views, UX refinement, full translation coverage audit across all six locales
 
-Step 5 depends on steps 2-4 (the suggestion service reads staff/line/shift-pattern and leave data). Step 7 depends on step 5 (notifications trigger off `shift_assignments` changes). This ordering must be preserved.
+Step 5 depends on steps 2-4 (the suggestion service reads staff/line/role/shift-pattern and leave data). Step 7 depends on step 5 (notifications trigger off `shift_assignments` changes). This ordering must be preserved. Localization (step 1) is foundational, not additive - every screen and notification built in steps 2-7 must use the translation system from the start rather than having strings retrofitted later. Unlike an earlier version of this plan that used WhatsApp/SMS, Web Push requires no third-party account, external approval process, or per-language template review - step 7 has no external dependency to wait on.
 
 ---
 
@@ -1192,15 +1684,18 @@ The build is successful when:
 - a planner can generate a rule-aware weekly draft across 3 lines and 3 shifts in a few clicks, instead of building it by hand in Excel
 - every rule violation is visible before approval, and approval remains a deliberate, explicit action
 - every employee, by default, can see only their own schedule on their phone, installable as a PWA
-- an approved schedule change reliably reaches the affected employee by both email and SMS
+- an approved schedule change reliably reaches the affected employee by email, and by push notification on any device where they've installed the PWA
 - permanent vs. agency cost and headcount are clearly separated in every report
 - the rule engine can grow to cover more Dutch ATW constraints later without a rewrite
+- any admin or employee can use the product entirely in their own language, chosen at registration and changeable anytime, across all six supported languages
+- nobody is ever automatically scheduled into a line-specific position they aren't qualified for, and every case where the system couldn't find a qualified person is surfaced, ranked, and actionable rather than silently dropped
+- a schedule can never be approved with a mandatory work station left completely uncovered, while every other constraint in the system remains an overridable warning
 
 ---
 
 ## 26. Open Items (Require a Follow-Up Decision, Do Not Block Build Start)
 
-- **MessageBird account/API credentials**: needed before Phase 7 (notifications) can be implemented and tested end-to-end; not needed for phases 1-6.
 - **Employee self-service leave requests**: whether employees should be able to submit their own Vakantie/short-excuse requests from the PWA, or whether this stays admin-only entry for the initial build.
 - **Notification scope for `line`/`company`-visibility employees**: whether a change to a colleague's shift (not the viewing employee's own shift) should also trigger a notification to employees with `line`/`company` visibility, or whether notifications stay strictly "your own assignment changed."
-- **Required headcount per line/shift/day**: whether this is a fixed default per slot or a per-week configurable input the planner sets before generating a suggestion.
+- **Required headcount per line/shift/role/day**: whether this is a fixed default per role slot or a per-week configurable input the planner sets before generating a suggestion.
+- **Bulk qualification assignment**: whether roles can only be granted one employee at a time from the staff detail screen, or whether the initial build also needs a "assign this role to multiple employees at once" screen for faster onboarding of the existing workforce into the new role system.
