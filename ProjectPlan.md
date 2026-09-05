@@ -366,7 +366,7 @@ Required routes (employee-facing, PWA, mobile):
 Desktop order from top to bottom:
 
 1. current week status strip (draft/proposed/approved, with a one-click "go to this week's schedule")
-2. quick counts: active employees, pending leave requests, active rule violations in the current draft
+2. quick counts: active employees, employees with no linked account (§11.2b), pending leave requests, active rule violations in the current draft
 3. shortcuts to staff, lines, shift patterns
 4. recent reports
 
@@ -424,16 +424,18 @@ Desktop order from top to bottom (list):
 Desktop order from top to bottom (detail):
 
 1. identity block (name, contact, phone, email)
-2. employment block (type, agency if applicable, hourly rate, default line)
-3. employment terms block (max weekly hours, effective dates)
-4. qualified roles block: a checklist/multi-select of all `roles` (grouped by line, plus a line-independent group, and within each group separated into stations vs. secondary tasks) showing which ones this employee is currently qualified for, editable inline
-5. recent assignment history
+2. linked account block: shows the currently linked `user` (name/email) if any, with a "Link account" search/dropdown (searching existing users by name/email) when none is linked, or an "Unlink" action when one is - see §11.2a
+3. employment block (type, agency if applicable, hourly rate, default line)
+4. employment terms block (max weekly hours, effective dates)
+5. qualified roles block: a checklist/multi-select of all `roles` (grouped by line, plus a line-independent group, and within each group separated into stations vs. secondary tasks) showing which ones this employee is currently qualified for, editable inline
+6. recent assignment history
 
 Layout rules:
 
 - employment terms must be visibly editable independent of the base identity fields, since they change on a different cadence
 - the qualified roles block must make the line-specific vs. line-independent distinction visually obvious (e.g. grouped headers), since "Dough Prep - Line 1" and "Dough Prep - Line 3" look similar but are unrelated qualifications (§11a.2)
 - the qualified roles block must also make the station-vs-secondary-task distinction visible, since a secondary task qualification is meaningless without an accompanying station qualification (§11a.3b)
+- the linked account block reads as "not linked yet" (§11.2b) rather than an error - it's outstanding work for the admin to eventually resolve, not a broken state, and does not block anything on this screen
 
 ### 10A.4 Leave Requests (Admin)
 
@@ -503,10 +505,33 @@ Maintain an accurate, typed record of every person who can be scheduled, includi
 - leadership/management staff (e.g. "Leiding" in the current paper schedule) are modeled as employees with `default_line_id = null`
 - separately from `default_line_id`, each employee has an explicit set of **qualified roles** (see §11a) - which line-specific or line-independent positions they are allowed to be automatically scheduled into
 
+### 11.2a Employee-User Account Linking
+
+An `employee` (the scheduling record: name, type, agency, pay, qualifications) and a `user` (the login account: email, password, locale, visibility_scope, role) are created independently, in either order, and are not linked automatically. The relationship is asymmetric: a `user` is not required to have a linked `employee` (e.g. an admin-only account with no scheduling record of its own), but every `employee` is **expected**, eventually, to have a linked `user` - that's the whole point of the link, since it's what lets that person log in and see their own schedule (§15).
+
+- an admin can create an `employee` record with no linked account yet - this is a normal, temporary state (the account may not be set up yet), not a permanent one, and is surfaced accordingly (see below), not silently accepted as fine forever
+- an admin can separately create a `user` account (their own, or on behalf of an employee) at any time, independent of whether an `employee` record exists yet
+- linking the two is a **manual, explicit admin action**: from the employee detail screen (§10A.3), the admin selects an existing `user` from a search/dropdown and assigns it to that employee's `user_id` (§17.3) - there is no automatic matching by email or any other heuristic, since the user explicitly confirmed this should stay under admin control rather than being inferred
+- unlinking is equally explicit - the admin can clear an employee's linked `user_id` without deleting either record
+- a `user` can be linked to at most one `employee` (enforced as a unique constraint on `employees.user_id` where not null); an `employee` has at most one linked `user_id` by definition (it's a single column)
+- until an employee is linked to a user account, that person has no way to log in and see their own schedule - they still appear normally in the admin's scheduling grid and reports, since scheduling never depends on the link, but this state is visible to the admin as outstanding work (see §11.2b), not hidden
+- this is deliberately **not** a hard block anywhere: an unlinked employee can still be scheduled, and a schedule can still be approved, with unlinked employees in it - the visibility described in §11.2b is informational, prompting the admin to eventually close the gap, never preventing anything
+
+### 11.2b Surfacing Unlinked Employees
+
+Because every employee is expected to eventually have a linked account, the admin needs to see at a glance who's missing one, without it blocking anything:
+
+- the staff list (§10A.3) shows a distinct badge (e.g. "No account") on any employee row with `user_id = null`
+- the admin dashboard (§10A.1) shows a count of employees with no linked account, alongside the other outstanding-work counters already specified there (pending leave requests, rule violations)
+- this count and badge are purely informational - no workflow in this product requires resolving it before proceeding (see §11.2a)
+
 ### 11.3 Acceptance Criteria
 
 - an admin can create, edit, and deactivate an employee of either type
 - an admin can create and edit agencies, and link/unlink an employee to one
+- an admin can link an existing user account to an employee record, and later unlink it, without either record being deleted
+- creating an employee record never requires a user account to exist, and creating a user account never requires an employee record to exist
+- an employee with no linked account is visibly flagged (staff list badge, dashboard count), without being blocked from scheduling or reporting
 - an admin can set and later change an employee's `max_weekly_hours` without losing the history of the previous value (see §17, `employment_terms`)
 - an admin can view and edit an employee's qualified roles (§11a) from the employee detail screen
 
@@ -1018,6 +1043,7 @@ Constraints:
 - `pay_type` required; forced to `hourly` at the application layer when `employee_type = uitzendkracht`
 - `hourly_rate` required when `pay_type = hourly`; `monthly_salary` and `contracted_hours_per_week` required when `pay_type = monthly` - enforced at the application/validation layer
 - `default_line_id` nullable, never a hard scheduling constraint
+- `user_id` nullable, links to at most one `user` (see §11.2a) - not required at creation and never inferred automatically
 - `is_active` defaults to `true`
 
 Indexes:
@@ -1025,6 +1051,7 @@ Indexes:
 - foreign key on `agency_id` with `nullOnDelete`
 - foreign key on `default_line_id` with `nullOnDelete`
 - foreign key on `user_id` with `nullOnDelete`
+- unique index on `user_id` where not null (a user account can be linked to at most one employee)
 - index on `employee_type`
 - index on `is_active`
 
@@ -1197,6 +1224,9 @@ All endpoints are under `Route::prefix('v1')->middleware('auth:sanctum')`, contr
 - `GET|POST /v1/employees`
 - `GET|PUT|DELETE /v1/employees/{employee}`
 - `GET|PUT /v1/employees/{employee}/employment-terms`
+- `PUT /v1/employees/{employee}/user` - link an existing user account to this employee (§11.2a); body `{ "user_id": 42 }`
+- `DELETE /v1/employees/{employee}/user` - unlink the currently linked account, if any
+- `GET /v1/users?unlinked=true&search=...` - search users not yet linked to any employee, for the link-account picker (§10A.3)
 - `PUT /v1/users/{user}/visibility-scope`
 
 #### Example: `GET /v1/employees`
@@ -1207,6 +1237,7 @@ Query params:
 - `agency_id`
 - `line_id` (matches `default_line_id`)
 - `is_active`
+- `has_account` (`true`|`false` - filters by whether `user_id` is set; `false` powers both the staff list badge and the dashboard count from §11.2b)
 
 Response example:
 
@@ -1591,6 +1622,9 @@ Both notification channels (§20) are plain, freely-authored content controlled 
 - an employee of either type can be created, edited, deactivated
 - an agency can be created and linked to uitzendkracht employees
 - `employment_terms.max_weekly_hours` can be changed without losing the prior value's history
+- an employee can be created with no linked user account, and remains fully schedulable
+- an admin can link an existing user account to an employee, then unlink it, without deleting either record
+- a user account already linked to one employee cannot also be linked to a second one
 
 ### Lines & Shift Patterns
 

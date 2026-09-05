@@ -1,27 +1,31 @@
 import { useTranslation } from 'react-i18next';
-import { useAuth } from '../features/auth/AuthContext';
+import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
+import { AppLayout } from '../components/layout/AppLayout';
+import { Card } from '../components/ui/Card';
+import { fetchEmployees } from '../features/staff/api';
 
 export function DashboardPage() {
   const { t } = useTranslation();
-  const { user, logout } = useAuth();
+
+  const { data: unlinkedEmployees } = useQuery({
+    queryKey: ['employees', { has_account: false }],
+    queryFn: () => fetchEmployees({ has_account: false }),
+  });
 
   return (
-    <div className="min-h-screen bg-slate-50 p-8">
-      <div className="mx-auto max-w-3xl rounded-lg bg-white p-6 shadow">
-        <div className="mb-4 flex items-center justify-between">
-          <h1 className="text-lg font-semibold text-slate-900">{t('app.name')}</h1>
-          <button
-            type="button"
-            onClick={() => void logout()}
-            className="text-sm font-medium text-slate-600 hover:text-slate-900"
-          >
-            {t('auth.logout')}
-          </button>
-        </div>
-        <p className="text-sm text-slate-600">
-          {user?.name} &middot; {user?.roles.join(', ')}
-        </p>
+    <AppLayout>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Card>
+          <p className="text-sm text-slate-500">{t('staff.no_account')}</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-900">
+            {unlinkedEmployees?.length ?? 0}
+          </p>
+          <Link to="/staff?has_account=false" className="mt-2 inline-block text-sm text-slate-600 hover:text-slate-900">
+            {t('staff.title')} &rarr;
+          </Link>
+        </Card>
       </div>
-    </div>
+    </AppLayout>
   );
 }
