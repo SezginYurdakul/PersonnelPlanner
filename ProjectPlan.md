@@ -414,6 +414,24 @@ Layout rules:
 - the form must not show `requires_coverage` for a secondary task, and must not show the attachment mode selector for a station - these fields are mutually exclusive by role kind, not just conditionally relevant
 - when attachment mode is "station-attached," the station picker should only list stations on the same line as this secondary task (or, if this task is being created as line-independent, only line-independent stations - though this combination is expected to be rare per §11a.2)
 
+### 10A.2b Pay Rate Surcharge Rules (Admin)
+
+Desktop order from top to bottom (list):
+
+1. table: name, day(s) of week, time window, surcharge percentage, active status
+
+Desktop order from top to bottom (form):
+
+1. name
+2. day(s) of week - multi-select (e.g. checkboxes for Mon-Sun)
+3. start time / end time (a time range picker; crossing midnight is allowed and handled the same way as `shift_patterns`, §10A - no separate "crosses midnight" toggle needed, it's derived from the times)
+4. surcharge percentage (numeric input, e.g. "25" for +25%)
+
+Layout rules:
+
+- the list should make it easy to spot overlapping rules at a glance (e.g. sorted by day, then start time) since §11.2c's "highest surcharge wins" behavior means overlaps are a normal, expected configuration, not a mistake to prevent
+- this screen has no direct relationship to the employee list - it configures rules that apply automatically wherever they overlap a shift, not per-employee
+
 ### 10A.3 Staff List / Detail (Admin)
 
 Desktop order from top to bottom (list):
@@ -525,6 +543,17 @@ Because every employee is expected to eventually have a linked account, the admi
 - the admin dashboard (§10A.1) shows a count of employees with no linked account, alongside the other outstanding-work counters already specified there (pending leave requests, rule violations)
 - this count and badge are purely informational - no workflow in this product requires resolving it before proceeding (see §11.2a)
 
+### 11.2c Pay Rate Surcharge Rules
+
+The base `hourly_rate`/`monthly_salary` on an employee (§11.2) is not the whole cost picture: the user confirmed that pay is higher for certain days and time windows (e.g. weekends, night hours), and rather than hardcoding a fixed set of bands (weekday/night/Saturday/Sunday), the admin defines this as its own configurable rule table - a **pay rate surcharge rule** - so the specific bands and percentages can be changed without a code change.
+
+- a **surcharge rule** consists of: which day(s) of the week it applies to (multi-select, e.g. "Saturday", or "Monday-Friday"), a start time and end time (may cross midnight, e.g. 18:00-06:00), and a surcharge percentage (e.g. 25 meaning +25% over the base rate)
+- surcharge rules apply to **both** `pay_type = hourly` and `pay_type = monthly` employees - for hourly employees they increase the effective rate for the overlapping portion of a shift; for monthly employees they apply as an overtime-style premium on top of the salary-derived effective hourly cost (§11.2), for the overlapping portion only - a monthly employee's fixed salary itself never changes, only what a surcharge-covered shift is considered to *cost* for scheduling/reporting purposes
+- a rule is not all-or-nothing against a whole shift: if a shift only partially overlaps a rule's time window (e.g. an 8-hour shift where only the last 2 hours fall in a 18:00-06:00 window), the surcharge applies only to the overlapping hours - the shift's cost is computed by splitting it into segments against all applicable rules and summing the segment costs
+- **when multiple rules overlap the same time segment** (e.g. a Saturday-night hour matches both a "Saturday" rule and a "nightly 18:00-06:00" rule), only the single **highest** surcharge percentage among the overlapping rules applies to that segment - surcharges do not stack/add
+- a segment with no applicable rule is costed at the employee's plain base rate (0% surcharge)
+- this feeds directly into `cost`-mode ranking (§12.2) and into cost reporting (§14): the "effective hourly cost" for a given candidate slot is no longer a single static number per employee, but is computed per shift instance from the base rate plus whatever surcharge rules overlap that specific day/time
+
 ### 11.3 Acceptance Criteria
 
 - an admin can create, edit, and deactivate an employee of either type
@@ -534,6 +563,7 @@ Because every employee is expected to eventually have a linked account, the admi
 - an employee with no linked account is visibly flagged (staff list badge, dashboard count), without being blocked from scheduling or reporting
 - an admin can set and later change an employee's `max_weekly_hours` without losing the history of the previous value (see §17, `employment_terms`)
 - an admin can view and edit an employee's qualified roles (§11a) from the employee detail screen
+- an admin can create, edit, and deactivate pay rate surcharge rules (day(s), time window, percentage), and a shift's computed cost reflects whichever rules overlap it, splitting and summing by segment where a shift only partially overlaps a rule
 
 ---
 
@@ -634,7 +664,7 @@ Let a planner generate a rule-aware draft for a given week across 3 lines and 3 
 2. Build the eligible candidate pool per slot: `employees.is_active = true` AND no approved leave/sick record covering that specific day (`leave_requests.start_date <= work_date <= end_date AND status = 'approved'`), computed independently per day since a person may be eligible some days of the week and not others, **AND qualified for the slot's role** per `employee_line_roles` (§11a.3) - a slot for a line-specific role only considers employees qualified for that exact line+role combination; a slot for a line-independent role considers anyone qualified for that role regardless of line.
 3. For each day x line x shift x **station**-role slot: run the `RuleEngine` against each qualified candidate (would assigning this slot exceed this person's `max_weekly_hours`?), drop rule-violating candidates, then rank the remainder according to `ranking_mode` and select exactly one employee for that slot (the engine always aims to satisfy `requires_coverage` with one person per station - a manual step is required afterward to add a second person to the same station, per §11a.3b):
    - `fair` - fewest hours assigned so far this week wins (the original, default fairness score)
-   - `cost` - lowest effective hourly cost wins (agency `hourly_rate`, or permanent staff's `hourly_rate`/salary-derived effective hourly cost, per §11.2); ties broken by the `fair` score so cost mode does not repeatedly overload the single cheapest person
+   - `cost` - lowest computed cost wins for that specific slot's day/shift: the candidate's base rate (agency `hourly_rate`, or permanent staff's `hourly_rate`/salary-derived effective hourly cost, per §11.2) plus whatever pay rate surcharge rules overlap that slot's time segments (§11.2c) - this is why cost is computed per slot instance rather than looked up as a flat per-employee number; ties broken by the `fair` score so cost mode does not repeatedly overload the single cheapest person
 4. Once all station slots for a day/shift are resolved (filled or flagged unfilled), make a second pass to auto-assign **secondary task** slots per the line-priority-then-fairness logic in §11a.3c.
 5. Write the selected assignments into `shift_assignments` with `status = proposed`, `source = auto_suggested`, each covering the slot's full shift duration (`starts_at`/`ends_at` left null - see §17.8).
 6. The planner reviews the grid, edits freely (any manual change is marked `source = manual`; the `RuleEngine` re-evaluates on every edit and updates the violation panel), then calls "Approve," which transitions `schedules.status = approved` and triggers §12.4 - unless a mandatory-coverage station is still unfilled, per §12.3b.
@@ -929,6 +959,22 @@ Fields:
 
 This is the qualification pivot from §11a.3: a row means "this employee is qualified for this role" (and, transitively, for that role's line if it's line-specific).
 
+### 17.5c Pay Rate Surcharge Rules
+
+Fields:
+
+- `id`
+- `name` (e.g. `"Weekend"`, `"Night hours"` - admin-facing label, not used in cost logic)
+- `days_of_week` (jsonb array of ISO weekday numbers 1-7, e.g. `[6,7]` for Saturday+Sunday)
+- `start_time`
+- `end_time`
+- `crosses_midnight` boolean (same convention as `shift_patterns`, §17.6)
+- `surcharge_percentage` (decimal, e.g. `25.00` meaning +25%)
+- `is_active`
+- timestamps
+
+This is the configurable rule table from §11.2c - applies to both `pay_type = hourly` and `pay_type = monthly` employees, computed per shift instance rather than stored as a static per-employee rate.
+
 ### 17.6 Shift Patterns
 
 Fields:
@@ -1112,6 +1158,21 @@ Indexes:
 - foreign key on `role_id` with cascade delete
 - index on `role_id` (to efficiently look up "who is qualified for this role" when building the suggestion candidate pool, §12.2)
 
+### 17A.5c Pay Rate Surcharge Rules
+
+Constraints:
+
+- `name` required
+- `days_of_week` required, non-empty array, each value an integer 1-7
+- `start_time` and `end_time` required
+- `crosses_midnight` defaults to `false`, must be `true` whenever `end_time < start_time` (same rule as `shift_patterns`, §17A.6)
+- `surcharge_percentage` required, must be greater than 0 (a 0% "surcharge" is just the base rate and doesn't need a rule row)
+- `is_active` defaults to `true`
+
+Indexes:
+
+- index on `is_active` (used when computing shift cost - only active rules are evaluated)
+
 ### 17A.6 Shift Patterns
 
 Constraints:
@@ -1269,6 +1330,34 @@ Response example:
 - `GET|PUT /v1/employees/{employee}/qualified-roles` (list/replace an employee's `employee_line_roles`, §11a.3)
 - `GET|POST /v1/shift-patterns`
 - `GET|PUT|DELETE /v1/shift-patterns/{shiftPattern}`
+- `GET|POST /v1/pay-rate-surcharge-rules` (§11.2c)
+- `GET|PUT|DELETE /v1/pay-rate-surcharge-rules/{payRateSurchargeRule}`
+
+#### Example: `POST /v1/pay-rate-surcharge-rules`
+
+Request example:
+
+```json
+{
+  "name": "Weekend",
+  "days_of_week": [6, 7],
+  "start_time": "00:00",
+  "end_time": "23:59",
+  "surcharge_percentage": 25
+}
+```
+
+A night-hours example spanning midnight:
+
+```json
+{
+  "name": "Night hours",
+  "days_of_week": [1, 2, 3, 4, 5],
+  "start_time": "18:00",
+  "end_time": "06:00",
+  "surcharge_percentage": 50
+}
+```
 
 #### Example: `POST /v1/roles`
 
@@ -1625,6 +1714,9 @@ Both notification channels (§20) are plain, freely-authored content controlled 
 - an employee can be created with no linked user account, and remains fully schedulable
 - an admin can link an existing user account to an employee, then unlink it, without deleting either record
 - a user account already linked to one employee cannot also be linked to a second one
+- an admin can create a pay rate surcharge rule (days, time window, percentage) applicable to both hourly and monthly employees
+- a shift that only partially overlaps a surcharge rule's time window is costed at the surcharge rate only for the overlapping hours, base rate for the rest
+- when two active surcharge rules overlap the same time segment, only the higher percentage applies to that segment - they never stack
 
 ### Lines & Shift Patterns
 
@@ -1700,7 +1792,7 @@ Recommended implementation order:
 
 1. project skeleton: Laravel API setup, PostgreSQL, Sanctum, `spatie/laravel-permission` + role/visibility-scope seeding, React+Vite+TS skeleton, `react-i18next` + Laravel localization wired in from the start with `locale` on registration (§21a), login. The account-creation screen's layout (identity fields + language selector) is built here, but its install-prompt section (§21.2a, §10A.6a) is a placeholder until step 7 - a working `beforeinstallprompt` listener needs the PWA manifest that doesn't exist yet, so wire it up properly in step 7 rather than half-building it twice.
 2. staff & agencies module (employees, employment terms, agencies) - migrations, models, controllers, resources, admin frontend screens
-3. lines, roles & shift patterns module - migrations, models, controllers, resources, admin frontend screens, including `roles` (station vs. secondary task, `requires_coverage`) and `employee_line_roles` (§11a) and the qualified-roles editor on the staff detail screen
+3. lines, roles & shift patterns module - migrations, models, controllers, resources, admin frontend screens, including `roles` (station vs. secondary task, `requires_coverage`) and `employee_line_roles` (§11a), the qualified-roles editor on the staff detail screen, and `pay_rate_surcharge_rules` (§11.2c) with its admin screen
 4. leave & sick tracking module - migrations, models, controllers, approval flow, admin frontend screens
 5. weekly scheduling core: `schedules`, `shift_assignments` (including `starts_at`/`ends_at` time-split support, §11a.3b), rule engine (`MaxWeeklyHoursRule` + disabled skeletons), `ScheduleSuggestionService` (with `ranking_mode`: fair/cost, and role-qualification filtering per §12.2), suggest/approve endpoints, mandatory-coverage approval blocking (§12.3b), admin schedule grid with drag-and-drop (§12.3a), unfilled-slot flagging and the alternative-candidates lookup (§12.2a, §12.2b)
 6. reporting & export: headcount and cost reports, PDF/Excel export

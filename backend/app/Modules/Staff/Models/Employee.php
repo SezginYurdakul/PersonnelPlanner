@@ -3,11 +3,14 @@
 namespace App\Modules\Staff\Models;
 
 use App\Models\User;
+use App\Modules\Lines\Models\Line;
+use App\Modules\Lines\Models\SchedulingRole;
 use Database\Factories\EmployeeFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -56,6 +59,25 @@ class Employee extends Model
     public function agency(): BelongsTo
     {
         return $this->belongsTo(Agency::class);
+    }
+
+    /**
+     * @return BelongsTo<Line, $this>
+     */
+    public function defaultLine(): BelongsTo
+    {
+        return $this->belongsTo(Line::class, 'default_line_id');
+    }
+
+    /**
+     * The scheduling roles (stations/secondary tasks) this employee is qualified for
+     * (ProjectPlan.md §11a.3).
+     *
+     * @return BelongsToMany<SchedulingRole, $this>
+     */
+    public function schedulingRoles(): BelongsToMany
+    {
+        return $this->belongsToMany(SchedulingRole::class, 'employee_scheduling_roles');
     }
 
     /**

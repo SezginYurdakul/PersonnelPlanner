@@ -27,6 +27,7 @@ class EmployeeResource extends JsonResource
             'contracted_hours_per_week' => $this->contracted_hours_per_week,
             'default_line_id' => $this->default_line_id,
             'employment_terms' => new EmploymentTermResource($this->whenLoaded('currentEmploymentTerm')),
+            'qualified_role_ids' => $this->whenLoaded('schedulingRoles', fn () => $this->schedulingRoles->pluck('id')),
             'has_account' => $this->hasLinkedAccount(),
             'user_id' => $this->user_id,
             'is_active' => $this->is_active,

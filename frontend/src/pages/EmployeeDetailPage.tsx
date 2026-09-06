@@ -8,6 +8,7 @@ import { Button } from '../components/ui/Button';
 import { LinkAccountPanel } from '../features/staff/LinkAccountPanel';
 import { EmploymentTermPanel } from '../features/staff/EmploymentTermPanel';
 import { EmployeeFormModal } from '../features/staff/EmployeeFormModal';
+import { QualifiedRolesPanel } from '../features/lines/QualifiedRolesPanel';
 import { fetchEmployee, updateEmployee } from '../features/staff/api';
 import type { EmployeeFormValues } from '../types/staff';
 
@@ -82,6 +83,10 @@ export function EmployeeDetailPage() {
 
         <Card>
           <EmploymentTermPanel employee={employee} />
+        </Card>
+
+        <Card>
+          <QualifiedRolesPanel employee={employee} qualifiedRoleIds={employee.qualified_role_ids} />
         </Card>
       </div>
 

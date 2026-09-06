@@ -7,6 +7,10 @@ const navItems = [
   { to: '/', labelKey: 'nav.dashboard' },
   { to: '/staff', labelKey: 'nav.staff' },
   { to: '/agencies', labelKey: 'nav.agencies' },
+  { to: '/lines', labelKey: 'nav.lines' },
+  { to: '/roles', labelKey: 'nav.roles' },
+  { to: '/shift-patterns', labelKey: 'nav.shift_patterns' },
+  { to: '/pay-rate-surcharge-rules', labelKey: 'nav.pay_rate_rules' },
 ];
 
 export function AppLayout({ children }: { children: ReactNode }) {

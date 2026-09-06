@@ -31,6 +31,7 @@ export interface Employee {
   contracted_hours_per_week: string | null;
   default_line_id: number | null;
   employment_terms: EmploymentTerm | null;
+  qualified_role_ids: number[];
   has_account: boolean;
   user_id: number | null;
   is_active: boolean;

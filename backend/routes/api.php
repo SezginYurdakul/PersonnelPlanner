@@ -2,6 +2,10 @@
 
 use App\Modules\Auth\Http\Controllers\AuthController;
 use App\Modules\Auth\Http\Controllers\UserController;
+use App\Modules\Lines\Http\Controllers\LineController;
+use App\Modules\Lines\Http\Controllers\PayRateSurchargeRuleController;
+use App\Modules\Lines\Http\Controllers\SchedulingRoleController;
+use App\Modules\Lines\Http\Controllers\ShiftPatternController;
 use App\Modules\Staff\Http\Controllers\AgencyController;
 use App\Modules\Staff\Http\Controllers\EmployeeController;
 use Illuminate\Support\Facades\Route;
@@ -24,6 +28,13 @@ Route::prefix('v1')->group(function () {
             Route::delete('/employees/{employee}/user', [EmployeeController::class, 'unlinkUser']);
             Route::get('/employees/{employee}/employment-terms', [EmployeeController::class, 'showEmploymentTerm']);
             Route::put('/employees/{employee}/employment-terms', [EmployeeController::class, 'updateEmploymentTerm']);
+            Route::put('/employees/{employee}/qualified-roles', [SchedulingRoleController::class, 'syncQualifications']);
+
+            Route::apiResource('lines', LineController::class);
+            Route::apiResource('roles', SchedulingRoleController::class)->parameters(['roles' => 'scheduling_role']);
+            Route::apiResource('shift-patterns', ShiftPatternController::class)->parameters(['shift-patterns' => 'shift_pattern']);
+            Route::apiResource('pay-rate-surcharge-rules', PayRateSurchargeRuleController::class)
+                ->parameters(['pay-rate-surcharge-rules' => 'pay_rate_surcharge_rule']);
         });
     });
 });

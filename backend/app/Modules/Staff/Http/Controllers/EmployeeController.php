@@ -40,7 +40,7 @@ class EmployeeController extends Controller
 
     public function show(Employee $employee): EmployeeResource
     {
-        $employee->load(['agency', 'currentEmploymentTerm']);
+        $employee->load(['agency', 'currentEmploymentTerm', 'schedulingRoles']);
 
         return new EmployeeResource($employee);
     }

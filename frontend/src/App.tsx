@@ -4,6 +4,10 @@ import { DashboardPage } from './pages/DashboardPage';
 import { StaffPage } from './pages/StaffPage';
 import { EmployeeDetailPage } from './pages/EmployeeDetailPage';
 import { AgenciesPage } from './pages/AgenciesPage';
+import { LinesPage } from './pages/LinesPage';
+import { RolesPage } from './pages/RolesPage';
+import { ShiftPatternsPage } from './pages/ShiftPatternsPage';
+import { PayRateSurchargeRulesPage } from './pages/PayRateSurchargeRulesPage';
 import { ProtectedRoute } from './components/layout/ProtectedRoute';
 
 export function App() {
@@ -40,6 +44,38 @@ export function App() {
           element={
             <ProtectedRoute>
               <AgenciesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/lines"
+          element={
+            <ProtectedRoute>
+              <LinesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/roles"
+          element={
+            <ProtectedRoute>
+              <RolesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/shift-patterns"
+          element={
+            <ProtectedRoute>
+              <ShiftPatternsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/pay-rate-surcharge-rules"
+          element={
+            <ProtectedRoute>
+              <PayRateSurchargeRulesPage />
             </ProtectedRoute>
           }
         />
