@@ -3,6 +3,7 @@
 namespace App\Modules\Staff\Models;
 
 use App\Models\User;
+use App\Modules\Leave\Models\LeaveRequest;
 use App\Modules\Lines\Models\Line;
 use App\Modules\Lines\Models\SchedulingRole;
 use Database\Factories\EmployeeFactory;
@@ -101,5 +102,13 @@ class Employee extends Model
     public function hasLinkedAccount(): bool
     {
         return $this->user_id !== null;
+    }
+
+    /**
+     * @return HasMany<LeaveRequest, $this>
+     */
+    public function leaveRequests(): HasMany
+    {
+        return $this->hasMany(LeaveRequest::class);
     }
 }

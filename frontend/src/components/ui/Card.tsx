@@ -1,5 +1,9 @@
 import type { ReactNode } from 'react';
 
 export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <div className={`rounded-lg bg-white p-6 shadow ${className}`}>{children}</div>;
+  return (
+    <div className={`rounded-2xl border border-visser-border bg-white p-6 shadow-sm ${className}`}>
+      {children}
+    </div>
+  );
 }

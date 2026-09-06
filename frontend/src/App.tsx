@@ -8,6 +8,7 @@ import { LinesPage } from './pages/LinesPage';
 import { RolesPage } from './pages/RolesPage';
 import { ShiftPatternsPage } from './pages/ShiftPatternsPage';
 import { PayRateSurchargeRulesPage } from './pages/PayRateSurchargeRulesPage';
+import { LeaveRequestsPage } from './pages/LeaveRequestsPage';
 import { ProtectedRoute } from './components/layout/ProtectedRoute';
 
 export function App() {
@@ -76,6 +77,14 @@ export function App() {
           element={
             <ProtectedRoute>
               <PayRateSurchargeRulesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/leave-requests"
+          element={
+            <ProtectedRoute>
+              <LeaveRequestsPage />
             </ProtectedRoute>
           }
         />

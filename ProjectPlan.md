@@ -127,71 +127,81 @@ Important assumptions:
 
 ## 6. Product Modules
 
-The product is organized into seven product domains:
+The product is organized into eight product domains:
 
 1. `Staff & Agencies` - employees, employment terms, temp agencies
 2. `Lines & Shift Patterns` - production lines, shift time definitions
 3. `Roles & Competency Matching` - line-specific and line-independent roles, employee qualifications
 4. `Leave & Sick Tracking` - leave types, leave requests, approval
-5. `Weekly Scheduling` - schedule generation, rule engine, suggestion, manual edit, approval, alternative-candidate lookup
-6. `Reporting & Export` - headcount and cost reports, PDF/Excel export
-7. `Employee Schedule View` - visibility-scoped schedule display (PWA) and notifications
+5. `Time & Attendance` - imported actual clock-in/out and break data, used for cost calculation
+6. `Weekly Scheduling` - schedule generation, rule engine, suggestion, manual edit, approval, alternative-candidate lookup
+7. `Reporting & Export` - headcount and cost reports, PDF/Excel export
+8. `Employee Schedule View` - visibility-scoped schedule display (PWA) and notifications
 
 There is also one internal support domain:
 
-8. `Rule Engine & Notification Infrastructure`
+9. `Rule Engine & Notification Infrastructure`
 
 ---
 
 ## 7. Visual and Thematic Design
 
+### 7.0 Brand
+
+This build is for a real customer, **Bakkerij Visser**, an industrial bakery. The product carries their brand identity throughout the admin application (not a generic "PersonnelPlanner" skin) - name, wordmark, and the color direction below are Bakkerij Visser's, not a placeholder.
+
 ### 7.1 Design Theme
 
 The visual direction should be:
 
-- `operational clarity`
-- `calm industrial`
-- `readable at a glance from across a factory office`
-
-The app should not look like a consumer social app, and it should not look like a raw admin scaffold (e.g. default Laravel Nova/Filament styling left unstyled).
+- `warm industrial` - a bakery's own palette (deep brown, warm gold) rather than a generic cool-toned admin tool
+- `operational clarity` - readable at a glance from across a factory office
+- confident and branded, not a raw admin scaffold (e.g. default Laravel Nova/Filament styling left unstyled), while staying calm enough for a dense weekly schedule grid to remain legible
 
 ### 7.2 Color Direction
 
-Primary:
+Primary (brand):
 
-- steel blue / slate
+- deep brown `#3D2817` (darker variant `#2C1D10` for the sidebar header/footer bands, mid variant `#4E3420` for sidebar hover states)
+- gold `#F5C518` (darker variant `#D4A017` for hover/active states) - the accent used for the active nav item, primary buttons, and key numbers
 
 Secondary:
 
-- warm neutral grays
-- wheat/amber accent (nods to the bakery domain without being literal/childish)
+- warm cream/off-white background `#FAF9F5`, with a slightly deeper warm neutral `#F3F0E6` and hairline borders `#EBE7DF` for card separation
+- amber-tinted neutrals for secondary badges and icon chips (e.g. `amber-50`/`amber-100` backgrounds with `amber-800`/`amber-900` text)
 
 State colors:
 
-- approved/confirmed: muted green
-- proposed/draft: neutral amber
-- rule violation/warning: controlled red
+- approved/confirmed/active: muted emerald green
+- proposed/draft/pending/warning: warm amber (distinct from the brand gold - reserve brand gold for brand/action elements, not status)
+- rule violation/rejected: controlled rose/red
 - leave (Vakantie): distinct cool tone, consistent with the color-coding already used in the factory's paper schedule
 - sick (ziek): distinct from leave, e.g. a warmer red-adjacent tone
+- agency/uitzendkracht badge: a cool blue, deliberately outside the warm brand palette so permanent-vs-agency staff are visually unambiguous at a glance
 
 Rules:
 
 - keep the same color meaning consistent across the calendar grid, reports, and notifications
 - avoid a rainbow-per-employee scheme - color should encode *status/type* (leave, sick, proposed, confirmed), not identity
+- brand gold is for navigation/actions; state colors (green/amber/rose/blue) are for data - don't let the two systems collide (e.g. a pending badge is amber, not gold)
 
 ### 7.3 Typography Direction
 
+- Inter as the primary typeface, with a bold/black weight reserved for headings, KPI numbers, and the wordmark
 - strong distinction between a date/day header and cell content
-- tabular figures for shift times and hour totals so columns of numbers align
+- tabular figures for shift times, hour totals, and KPI numbers so columns of numbers align
 - compact but legible at small sizes, since the core view is a dense weekly grid (3 lines x 3 shifts x 7 days)
 
 ### 7.4 Layout Direction
 
 Rules:
 
+- the admin application uses a fixed left sidebar for primary navigation (brand header at top, nav links, user profile/logout at the bottom) with a scrollable content area to its right, rather than a top nav bar - collapses to a slide-out drawer on mobile/tablet widths
+- content is organized into rounded cards (`rounded-2xl`, hairline border, soft shadow) on the warm cream background (§7.2) - this card language is consistent across every admin screen (staff, lines, work stations & tasks, shift patterns, pay rate rules, leave requests), not just the dashboard
 - the admin's weekly schedule view is desktop-first and grid-dense (rows = employees grouped by line, columns = days)
 - the employee's schedule view is mobile-first and simplified (a single week, one's own or one's line's shifts only, by default)
 - avoid forcing the admin grid layout onto the employee PWA view - they are different information densities for different audiences
+- the employee-facing PWA (§15) keeps the same brand colors but does not need the sidebar shell - it's a focused single-purpose mobile view, not a multi-section admin app
 
 ### 7.5 Surface System
 
@@ -366,14 +376,22 @@ Required routes (employee-facing, PWA, mobile):
 Desktop order from top to bottom:
 
 1. current week status strip (draft/proposed/approved, with a one-click "go to this week's schedule")
-2. quick counts: active employees, employees with no linked account (§11.2b), pending leave requests, active rule violations in the current draft
-3. shortcuts to staff, lines, shift patterns
-4. recent reports
+2. a row of KPI cards, each backed by real data this product actually has - no fabricated production/IoT metrics (e.g. no "daily bread output" or "oven temperature," since this product tracks scheduling, not manufacturing execution):
+   - active employee count (with a vast/uitzendkracht split, e.g. "142 permanent · 22 agency")
+   - employees with no linked account (§11.2b)
+   - pending leave requests (§13)
+   - per-line staffing rate for the current/selected week: assigned headcount vs. `requires_coverage` station slots that need filling, per line (this is the one legitimate "how full is line X" metric, since it's derived directly from `shift_assignments` and `scheduling_roles`, not invented)
+3. a two-column section below the KPI row:
+   - wider column: per-line staffing detail (a progress bar per line showing filled vs. required station coverage for the current week, linking through to that line's slice of the schedule grid)
+   - narrower column: a quick-actions card (generate this week's suggestion, review pending leave requests, jump to reports) styled as the one dark/brand-colored panel on an otherwise light page (§7.2) - it's the deliberate visual anchor of the dashboard
+4. shortcuts to staff, lines, shift patterns
+5. recent reports
 
 Layout rules:
 
 - the current week's schedule status must be the single most prominent element
 - pending leave requests must be visible without navigating away, since they block accurate suggestion generation
+- every number on this screen must trace to a real query against this product's own tables - if a metric would require data this product doesn't collect (production volume, equipment sensors, etc.), it does not appear here, even as a placeholder
 
 ### 10A.2 Weekly Schedule Grid (Admin)
 
@@ -465,6 +483,21 @@ Desktop order from top to bottom:
 Layout rules:
 
 - pending requests must be sorted to the top by default, since they are the actionable ones
+
+### 10A.4a Time Clock Import (Admin)
+
+Desktop order from top to bottom:
+
+1. shape selector: "Simple" vs "Detailed" (§13a.3), chosen before a file can be uploaded
+2. file upload control
+3. column-mapping step: once a file is selected, its header row is shown so the admin can map file columns to the fields the chosen shape needs (employee identifier, date, and either clock-in/clock-out/break-minutes for Simple, or event-time/event-type for Detailed)
+4. an import summary after processing: counts of imported/skipped rows, and a list of per-row errors with enough detail to fix and re-upload (§13a.4)
+5. a plain list/table of already-imported entries below, filterable by employee and date range, each row editable inline (§13a.4's manual-correction path)
+
+Layout rules:
+
+- the shape selector must be answered before the column-mapping step appears - the two shapes need different columns, so showing both at once would be confusing
+- per-row errors must reference the source file's row number, since that's what the admin will use to find and fix the problem in their original export
 
 ### 10A.5 Reports (Admin)
 
@@ -751,6 +784,45 @@ A day where an employee simply has no shift assigned ("vrij" in the current pape
 
 ---
 
+## 13a. Time & Attendance Module Specification
+
+### 13a.1 Goal
+
+Employees take breaks during a shift (e.g. a lunch break) that are unpaid - the planned shift time is not what actually gets paid. This module imports real clock-in/clock-out and break data per employee so that cost calculations (§11.2c, §14) are based on actual worked time, not the planned `shift_assignment` time.
+
+### 13a.2 Relationship to Planned Shifts
+
+Real attendance data is tracked in its own table (`time_clock_entries`), separate from `shift_assignments` (the planned schedule) - the two represent different things (planned vs. actual) and must not be conflated in one table:
+
+- a `time_clock_entries` row is matched to an `employee_id` and a `work_date`, and **optionally** linked to the `shift_assignment` it corresponds to (auto-matched by employee + date at import time, per §13a.4 - if no assignment exists for that employee/date, the entry is still saved, just unlinked)
+- cost calculation (§11.2c, §14) uses the actual worked minutes (total clocked time minus total break time) from `time_clock_entries` when a matching entry exists for that employee/date; it falls back to the planned `shift_assignment`/`shift_pattern` duration when no actual attendance data has been imported for that day - the system is never blocked by missing attendance data, it just uses the best information available
+
+### 13a.3 Supported Data Shapes
+
+The source system's export format isn't known in advance, so two shapes are both supported - a real-world PDKS/clock-terminal export may look like either one, and both resolve to the same internal representation (a clock-in, a clock-out, and zero or more break intervals in between):
+
+- **Simple**: one row per employee per day with a clock-in time, a clock-out time, and a single total break-minutes figure (no break start/end detail)
+- **Detailed**: a sequence of timestamped events per employee per day - clock-in, break-start, break-end, break-start, break-end, ..., clock-out (any number of break cycles) - each break interval is captured individually, and total break time is their sum
+
+Both shapes produce the same stored result: a clock-in time, a clock-out time, a total break-minutes figure, and (for the detailed shape only) the individual break intervals preserved for reference/audit.
+
+### 13a.4 Import Flow
+
+- the admin uploads a CSV/Excel file from an import screen and explicitly selects which shape it is (**Simple** or **Detailed**) before parsing - the system does not try to auto-detect the format
+- each row/event-group is matched to an `employee` by whatever identifier the file carries (e.g. an employee number or email column mapped during import) and to a `work_date`; if a `shift_assignment` exists for that employee on that date, the new `time_clock_entries` row is linked to it automatically
+- rows that fail to match any employee, or that carry an obviously invalid time range (e.g. clock-out before clock-in), are reported back to the admin as skipped/errored rather than silently dropped or guessed at
+- an admin can review imported entries afterward and manually correct the employee/date match or the times themselves, the same way other manually-corrected data in this system works (§11.2a's manual-linking precedent)
+
+### 13a.5 Acceptance Criteria
+
+- both the Simple and Detailed CSV shapes can be imported and produce equivalent stored attendance data
+- an imported entry automatically links to the matching `shift_assignment` when one exists for that employee/date, and is still saved (unlinked) when one doesn't
+- a row that can't be matched to an employee, or has an invalid time range, is surfaced to the admin as a per-row import error, not silently skipped
+- cost calculations use actual clocked-and-break-adjusted time when available for an employee/date, and fall back to the planned shift duration otherwise
+- an admin can manually edit an imported attendance entry after the fact
+
+---
+
 ## 14. Reporting Module Specification
 
 ### 14.1 Goal
@@ -761,12 +833,14 @@ Give management a trustworthy, exportable view of who worked, on what line, and 
 
 - headcount per line per shift per day, for a selected week or month
 - total hours and cost per employee type (vast vs. uitzendkracht), with an agency-level subtotal for uitzendkracht
+- cost figures use actual clocked-and-break-adjusted hours from `time_clock_entries` (§13a) where available for an employee/date, falling back to planned `shift_assignment` duration otherwise - so cost reports reflect break-adjusted reality wherever attendance data has been imported, not just the plan
 - PDF export (via `barryvdh/laravel-dompdf`) and Excel export (via `maatwebsite/excel`)
 
 ### 14.3 Acceptance Criteria
 
 - a report for a past approved week reflects the actual approved `shift_assignments`, not any leftover draft/proposed data
 - the cost breakdown correctly separates vast and uitzendkracht hours and cost
+- a day with imported attendance data shows break-adjusted actual cost; a day without it shows planned-shift cost, and the report does not error or block on partial attendance data coverage
 - exported files open correctly in common PDF viewers and Excel
 
 ---
@@ -853,13 +927,16 @@ Core tables required:
 - `employees`
 - `employment_terms`
 - `lines`
-- `roles`
-- `employee_line_roles`
+- `scheduling_roles`
+- `employee_scheduling_roles`
 - `shift_patterns`
+- `pay_rate_surcharge_rules`
 - `schedules`
 - `shift_assignments`
 - `leave_types`
 - `leave_requests`
+- `time_clock_entries`
+- `time_clock_breaks`
 - `push_subscriptions`
 
 Optional support tables:
@@ -1038,6 +1115,32 @@ Fields:
 - `reason` nullable
 - `approved_by` nullable
 - timestamps
+
+### 17.10a Time Clock Entries
+
+Fields:
+
+- `id`
+- `employee_id`
+- `shift_assignment_id` nullable (auto-matched at import time when a planned assignment exists for the same employee/date, §13a.4)
+- `work_date`
+- `clock_in`
+- `clock_out`
+- `break_minutes` (integer, total break time - always populated regardless of import shape; for the Detailed shape this is derived by summing `time_clock_breaks` rows, for the Simple shape it's taken directly from the file)
+- `source` (enum: `import_simple`, `import_detailed`, `manual` - which import shape produced this row, or that an admin corrected/created it by hand)
+- timestamps
+
+### 17.10b Time Clock Breaks
+
+Fields:
+
+- `id`
+- `time_clock_entry_id`
+- `break_start`
+- `break_end`
+- timestamps
+
+Only populated for entries imported via the Detailed shape (§13a.3) - a Simple-shape entry has a `break_minutes` total on `time_clock_entries` with no corresponding rows here.
 
 ### 17.11 Push Subscriptions
 
@@ -1234,6 +1337,31 @@ Indexes:
 - index on `(employee_id, start_date, end_date)`
 - index on `status`
 
+### 17A.9b Time Clock Entries
+
+Constraints:
+
+- `clock_out` must be after `clock_in` - a row failing this at import time is rejected as a per-row import error (§13a.4), never silently corrected or dropped
+- `break_minutes` defaults to `0`, must be non-negative, and must not exceed the total clock-in-to-clock-out span
+- `source` required
+
+Indexes:
+
+- foreign key on `employee_id` with cascade delete
+- foreign key on `shift_assignment_id` with `nullOnDelete` (an entry survives its planned assignment being edited/removed - actual attendance history must remain stable)
+- index on `(employee_id, work_date)` (used both to look up an employee's actual hours for a given day, and to auto-match new imports against existing `shift_assignments`)
+
+### 17A.9c Time Clock Breaks
+
+Constraints:
+
+- `break_end` must be after `break_start`
+- both must fall within the parent entry's `clock_in`/`clock_out` span
+
+Indexes:
+
+- foreign key on `time_clock_entry_id` with cascade delete
+
 ### 17A.9a Push Subscriptions
 
 Constraints:
@@ -1396,6 +1524,49 @@ A `station`-attached example would instead set `"attachment_type": "station"` an
 - `GET|PUT|DELETE /v1/leave-requests/{leaveRequest}`
 - `POST /v1/leave-requests/{leaveRequest}/approve`
 - `POST /v1/leave-requests/{leaveRequest}/reject`
+
+### 18.4b Time & Attendance
+
+- `POST /v1/time-clock-entries/import` (§13a.4) - multipart file upload; body also carries `shape` (`simple`|`detailed`) and the column-mapping the admin selected
+- `GET /v1/time-clock-entries` (filterable by `employee_id`, date range)
+- `GET|PUT|DELETE /v1/time-clock-entries/{timeClockEntry}` (manual review/correction, §13a.4)
+
+#### Example: `POST /v1/time-clock-entries/import`
+
+Request example (multipart form, shown as the non-file fields):
+
+```json
+{
+  "shape": "detailed",
+  "column_mapping": {
+    "employee_identifier": "Personeelsnummer",
+    "date": "Datum",
+    "event_time": "Tijd",
+    "event_type": "Type"
+  }
+}
+```
+
+Response example:
+
+```json
+{
+  "data": {
+    "imported": 214,
+    "skipped": 3,
+    "errors": [
+      {
+        "row": 47,
+        "reason": "No employee found matching identifier \"9981\"."
+      },
+      {
+        "row": 112,
+        "reason": "clock_out is before clock_in."
+      }
+    ]
+  }
+}
+```
 
 ### 18.4a Push Subscriptions
 
@@ -1743,6 +1914,14 @@ Both notification channels (§20) are plain, freely-authored content controlled 
 - an approved Vakantie/ziek record removes the employee from the suggestion pool for every day in range
 - a day with no assignment ("vrij") requires no approval workflow
 
+### Time & Attendance
+
+- a Simple-shape and a Detailed-shape file for the same underlying data produce equivalent stored attendance entries
+- an entry auto-links to a matching `shift_assignment` when one exists, and imports successfully unlinked when one doesn't
+- a row with an unmatched employee or an invalid time range is reported as a specific per-row error, not silently dropped
+- an admin can manually edit an imported entry's employee match, date, or times after the fact
+- cost calculations use break-adjusted actual hours when attendance data exists for an employee/date, and planned shift duration when it doesn't, without erroring on partial coverage
+
 ### Weekly Scheduling
 
 - suggestion generation never proposes a slot for someone on approved leave that day
@@ -1795,11 +1974,12 @@ Recommended implementation order:
 3. lines, roles & shift patterns module - migrations, models, controllers, resources, admin frontend screens, including `roles` (station vs. secondary task, `requires_coverage`) and `employee_line_roles` (§11a), the qualified-roles editor on the staff detail screen, and `pay_rate_surcharge_rules` (§11.2c) with its admin screen
 4. leave & sick tracking module - migrations, models, controllers, approval flow, admin frontend screens
 5. weekly scheduling core: `schedules`, `shift_assignments` (including `starts_at`/`ends_at` time-split support, §11a.3b), rule engine (`MaxWeeklyHoursRule` + disabled skeletons), `ScheduleSuggestionService` (with `ranking_mode`: fair/cost, and role-qualification filtering per §12.2), suggest/approve endpoints, mandatory-coverage approval blocking (§12.3b), admin schedule grid with drag-and-drop (§12.3a), unfilled-slot flagging and the alternative-candidates lookup (§12.2a, §12.2b)
-6. reporting & export: headcount and cost reports, PDF/Excel export
-7. employee schedule view (PWA) + notifications: `visibility_scope`-aware view, `vite-plugin-pwa` setup, VAPID key generation, push-subscription registration (§20.2a), `ScheduleChanged` notification (email + Web Push), all rendered per the recipient's `locale` - this is also where the account-creation screen's install prompt (§21.2a) becomes fully functional, once the manifest and `beforeinstallprompt` plumbing it depends on exist
-8. frontend polish: unified visual system across admin and employee views, UX refinement, full translation coverage audit across all six locales
+6. time & attendance module (§13a): `time_clock_entries`/`time_clock_breaks` migrations/models, the Simple and Detailed CSV/Excel import parsers, employee/date auto-matching against `shift_assignments`, the import screen with column mapping and per-row error reporting, and manual-correction editing
+7. reporting & export: headcount and cost reports, PDF/Excel export, with cost figures preferring actual `time_clock_entries` data over planned shift duration where available (§14.2)
+8. employee schedule view (PWA) + notifications: `visibility_scope`-aware view, `vite-plugin-pwa` setup, VAPID key generation, push-subscription registration (§20.2a), `ScheduleChanged` notification (email + Web Push), all rendered per the recipient's `locale` - this is also where the account-creation screen's install prompt (§21.2a) becomes fully functional, once the manifest and `beforeinstallprompt` plumbing it depends on exist
+9. frontend polish: unified visual system across admin and employee views, UX refinement, full translation coverage audit across all six locales
 
-Step 5 depends on steps 2-4 (the suggestion service reads staff/line/role/shift-pattern and leave data). Step 7 depends on step 5 (notifications trigger off `shift_assignments` changes). This ordering must be preserved. Localization (step 1) is foundational, not additive - every screen and notification built in steps 2-7 must use the translation system from the start rather than having strings retrofitted later. Unlike an earlier version of this plan that used WhatsApp/SMS, Web Push requires no third-party account, external approval process, or per-language template review - step 7 has no external dependency to wait on.
+Step 5 depends on steps 2-4 (the suggestion service reads staff/line/role/shift-pattern and leave data). Step 6 depends on step 5 (attendance entries auto-match against `shift_assignments`). Step 7 depends on step 6 (cost reporting reads attendance data). Step 8 depends on step 5 (notifications trigger off `shift_assignments` changes). This ordering must be preserved. Localization (step 1) is foundational, not additive - every screen and notification built in steps 2-8 must use the translation system from the start rather than having strings retrofitted later. Unlike an earlier version of this plan that used WhatsApp/SMS, Web Push requires no third-party account, external approval process, or per-language template review - step 8 has no external dependency to wait on.
 
 ---
 

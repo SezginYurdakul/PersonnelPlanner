@@ -1,6 +1,8 @@
 <?php
 
 use App\Modules\Auth\AuthServiceProvider;
+use App\Modules\Dashboard\DashboardServiceProvider;
+use App\Modules\Leave\LeaveServiceProvider;
 use App\Modules\Lines\LinesServiceProvider;
 use App\Modules\Staff\StaffServiceProvider;
 use App\Providers\AppServiceProvider;
@@ -12,4 +14,6 @@ return [
     AuthServiceProvider::class,
     LinesServiceProvider::class,
     StaffServiceProvider::class,
+    LeaveServiceProvider::class,
+    DashboardServiceProvider::class,
 ];

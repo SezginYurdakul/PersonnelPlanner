@@ -38,14 +38,26 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50">
+    <div className="flex min-h-screen items-center justify-center bg-visser-brown">
       <form
         onSubmit={handleSubmit(onSubmit)}
-        className="w-full max-w-sm rounded-lg bg-white p-8 shadow"
+        className="w-full max-w-sm rounded-2xl border border-visser-brown-mid bg-white p-8 shadow-2xl"
       >
-        <h1 className="mb-6 text-xl font-semibold text-slate-900">
-          {t('auth.login.title')}
-        </h1>
+        <div className="mb-6 flex items-center space-x-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-amber-200/30 bg-gradient-to-br from-visser-gold to-visser-gold-dark text-xl font-extrabold text-visser-brown shadow-lg shadow-visser-gold/20">
+            <i className="fa-solid fa-wheat-awn" />
+          </div>
+          <div>
+            <span className="block text-sm font-extrabold tracking-wider text-visser-brown">
+              BAKKERIJ VISSER
+            </span>
+            <span className="block text-[10px] font-semibold uppercase tracking-widest text-amber-700/80">
+              Personeelsplanning
+            </span>
+          </div>
+        </div>
+
+        <h1 className="mb-6 text-xl font-extrabold text-visser-brown">{t('auth.login.title')}</h1>
 
         <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="email">
           {t('auth.login.email')}
@@ -53,11 +65,11 @@ export function LoginPage() {
         <input
           id="email"
           type="email"
-          className="mb-3 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          className="mb-3 w-full rounded-xl border border-visser-border bg-visser-cream px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-visser-gold"
           {...register('email')}
         />
         {errors.email && (
-          <p className="mb-2 text-sm text-red-600">{errors.email.message}</p>
+          <p className="mb-2 text-sm text-rose-600">{errors.email.message}</p>
         )}
 
         <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="password">
@@ -66,19 +78,19 @@ export function LoginPage() {
         <input
           id="password"
           type="password"
-          className="mb-4 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          className="mb-4 w-full rounded-xl border border-visser-border bg-visser-cream px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-visser-gold"
           {...register('password')}
         />
         {errors.password && (
-          <p className="mb-2 text-sm text-red-600">{errors.password.message}</p>
+          <p className="mb-2 text-sm text-rose-600">{errors.password.message}</p>
         )}
 
-        {serverError && <p className="mb-4 text-sm text-red-600">{serverError}</p>}
+        {serverError && <p className="mb-4 text-sm text-rose-600">{serverError}</p>}
 
         <button
           type="submit"
           disabled={isSubmitting}
-          className="w-full rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          className="w-full rounded-xl bg-visser-gold px-4 py-2.5 text-sm font-bold text-visser-brown shadow-md shadow-visser-gold/30 transition-colors hover:bg-visser-gold-dark disabled:opacity-50"
         >
           {t('auth.login.submit')}
         </button>

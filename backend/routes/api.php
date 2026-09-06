@@ -2,6 +2,9 @@
 
 use App\Modules\Auth\Http\Controllers\AuthController;
 use App\Modules\Auth\Http\Controllers\UserController;
+use App\Modules\Dashboard\Http\Controllers\DashboardController;
+use App\Modules\Leave\Http\Controllers\LeaveRequestController;
+use App\Modules\Leave\Http\Controllers\LeaveTypeController;
 use App\Modules\Lines\Http\Controllers\LineController;
 use App\Modules\Lines\Http\Controllers\PayRateSurchargeRuleController;
 use App\Modules\Lines\Http\Controllers\SchedulingRoleController;
@@ -18,6 +21,8 @@ Route::prefix('v1')->group(function () {
         Route::get('/auth/me', [AuthController::class, 'me']);
 
         Route::middleware('role:admin')->group(function () {
+            Route::get('/dashboard/summary', [DashboardController::class, 'summary']);
+
             Route::get('/users', [UserController::class, 'index']);
             Route::put('/users/{user}/visibility-scope', [UserController::class, 'updateVisibilityScope']);
 
@@ -35,6 +40,14 @@ Route::prefix('v1')->group(function () {
             Route::apiResource('shift-patterns', ShiftPatternController::class)->parameters(['shift-patterns' => 'shift_pattern']);
             Route::apiResource('pay-rate-surcharge-rules', PayRateSurchargeRuleController::class)
                 ->parameters(['pay-rate-surcharge-rules' => 'pay_rate_surcharge_rule']);
+
+            Route::get('/leave-types', [LeaveTypeController::class, 'index']);
+            Route::post('/leave-types', [LeaveTypeController::class, 'store']);
+
+            Route::apiResource('leave-requests', LeaveRequestController::class)
+                ->parameters(['leave-requests' => 'leave_request']);
+            Route::post('/leave-requests/{leave_request}/approve', [LeaveRequestController::class, 'approve']);
+            Route::post('/leave-requests/{leave_request}/reject', [LeaveRequestController::class, 'reject']);
         });
     });
 });
