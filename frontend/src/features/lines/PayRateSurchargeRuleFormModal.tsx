@@ -3,6 +3,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
+import { TimeInputHint } from '../../components/ui/TimeInputHint';
 import type { PayRateSurchargeRule } from '../../types/lines';
 
 const schema = z.object({
@@ -46,6 +47,8 @@ export function PayRateSurchargeRuleFormModal({
   });
 
   const selectedDays = (watch('days_of_week') as number[] | undefined) ?? [];
+  const startTime = watch('start_time') as string | undefined;
+  const endTime = watch('end_time') as string | undefined;
 
   function toggleDay(day: number) {
     const next = selectedDays.includes(day)
@@ -103,6 +106,7 @@ export function PayRateSurchargeRuleFormModal({
               className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
               {...register('start_time')}
             />
+            <TimeInputHint time={startTime} />
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -113,6 +117,7 @@ export function PayRateSurchargeRuleFormModal({
               className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
               {...register('end_time')}
             />
+            <TimeInputHint time={endTime} />
           </div>
         </div>
 

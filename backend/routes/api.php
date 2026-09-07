@@ -9,6 +9,10 @@ use App\Modules\Lines\Http\Controllers\LineController;
 use App\Modules\Lines\Http\Controllers\PayRateSurchargeRuleController;
 use App\Modules\Lines\Http\Controllers\SchedulingRoleController;
 use App\Modules\Lines\Http\Controllers\ShiftPatternController;
+use App\Modules\Scheduling\Http\Controllers\AlternativeCandidateController;
+use App\Modules\Scheduling\Http\Controllers\ScheduleController;
+use App\Modules\Scheduling\Http\Controllers\ScheduleSuggestionController;
+use App\Modules\Scheduling\Http\Controllers\ShiftAssignmentController;
 use App\Modules\Staff\Http\Controllers\AgencyController;
 use App\Modules\Staff\Http\Controllers\EmployeeController;
 use Illuminate\Support\Facades\Route;
@@ -48,6 +52,16 @@ Route::prefix('v1')->group(function () {
                 ->parameters(['leave-requests' => 'leave_request']);
             Route::post('/leave-requests/{leave_request}/approve', [LeaveRequestController::class, 'approve']);
             Route::post('/leave-requests/{leave_request}/reject', [LeaveRequestController::class, 'reject']);
+
+            Route::apiResource('schedules', ScheduleController::class)->except(['update']);
+            Route::post('/schedules/suggest', [ScheduleSuggestionController::class, 'store']);
+            Route::post('/schedules/{schedule}/approve', [ScheduleController::class, 'approve']);
+            Route::get('/schedules/{schedule}/alternative-candidates', [AlternativeCandidateController::class, 'index']);
+
+            Route::apiResource('shift-assignments', ShiftAssignmentController::class)
+                ->parameters(['shift-assignments' => 'shift_assignment'])
+                ->only(['store', 'update', 'destroy']);
+            Route::patch('/shift-assignments/{shift_assignment}/move', [ShiftAssignmentController::class, 'move']);
         });
     });
 });

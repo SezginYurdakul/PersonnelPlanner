@@ -1,8 +1,9 @@
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
+import { TimeInputHint } from '../../components/ui/TimeInputHint';
 import type { ShiftPattern } from '../../types/lines';
 
 const schema = z.object({
@@ -26,6 +27,7 @@ export function ShiftPatternFormModal({
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -35,6 +37,9 @@ export function ShiftPatternFormModal({
       end_time: shiftPattern?.end_time.slice(0, 5) ?? '',
     },
   });
+
+  const startTime = useWatch({ control, name: 'start_time' });
+  const endTime = useWatch({ control, name: 'end_time' });
 
   async function submit(values: FormValues) {
     await onSubmit(values);
@@ -62,6 +67,7 @@ export function ShiftPatternFormModal({
               className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
               {...register('start_time')}
             />
+            <TimeInputHint time={startTime} />
             {errors.start_time && <p className="mt-1 text-sm text-red-600">{errors.start_time.message}</p>}
           </div>
           <div>
@@ -73,6 +79,7 @@ export function ShiftPatternFormModal({
               className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
               {...register('end_time')}
             />
+            <TimeInputHint time={endTime} />
             {errors.end_time && <p className="mt-1 text-sm text-red-600">{errors.end_time.message}</p>}
           </div>
         </div>

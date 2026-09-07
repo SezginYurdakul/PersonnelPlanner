@@ -68,7 +68,15 @@ export function RoleFormModal({
   });
 
   async function submit(values: FormValues) {
-    await onSubmit(values);
+    // The backend rejects requires_coverage for secondary tasks and
+    // attachment_type/attached_station_role_id for stations (prohibited_if rules) - only
+    // send the fields that apply to the selected role_kind.
+    const payload =
+      values.role_kind === 'station'
+        ? { ...values, attachment_type: undefined, attached_station_role_id: undefined }
+        : { ...values, requires_coverage: undefined };
+
+    await onSubmit(payload);
     onClose();
   }
 

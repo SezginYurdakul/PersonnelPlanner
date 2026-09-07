@@ -9,6 +9,7 @@ import { RolesPage } from './pages/RolesPage';
 import { ShiftPatternsPage } from './pages/ShiftPatternsPage';
 import { PayRateSurchargeRulesPage } from './pages/PayRateSurchargeRulesPage';
 import { LeaveRequestsPage } from './pages/LeaveRequestsPage';
+import { WeeklySchedulePage } from './pages/WeeklySchedulePage';
 import { ProtectedRoute } from './components/layout/ProtectedRoute';
 
 export function App() {
@@ -85,6 +86,14 @@ export function App() {
           element={
             <ProtectedRoute>
               <LeaveRequestsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/schedule"
+          element={
+            <ProtectedRoute>
+              <WeeklySchedulePage />
             </ProtectedRoute>
           }
         />

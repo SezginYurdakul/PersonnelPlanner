@@ -5,6 +5,7 @@ import { useAuth } from '../../features/auth/AuthContext';
 
 const navItems = [
   { to: '/', labelKey: 'nav.dashboard', icon: 'fa-chart-pie' },
+  { to: '/schedule', labelKey: 'nav.schedule', icon: 'fa-calendar-week' },
   { to: '/staff', labelKey: 'nav.staff', icon: 'fa-user-group' },
   { to: '/agencies', labelKey: 'nav.agencies', icon: 'fa-handshake' },
   { to: '/lines', labelKey: 'nav.lines', icon: 'fa-industry' },
