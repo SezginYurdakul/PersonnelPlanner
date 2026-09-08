@@ -41,6 +41,11 @@ final class SlotCandidateRanker
      * @param  Collection<int, Employee>  $pool
      * @param  Collection<int, float>  $fairScoresByEmployeeId  running hours-so-far tally,
      *   keyed by employee id, maintained by the caller across a whole generation pass.
+     * @param  Collection<int, int>  $homeShiftPatternsByEmployeeId  each employee's first-
+     *   assigned shift_pattern_id this generation run (soft shift-consistency preference).
+     * @param  Collection<int, Collection<int, Carbon>>  $restDaysByEmployeeId  each
+     *   employee's rest days so far this generation run (soft consecutive-rest-day
+     *   preference).
      * @return Collection<int, CandidateData>
      */
     public function rankPool(
@@ -49,6 +54,9 @@ final class SlotCandidateRanker
         Carbon $shiftEnd,
         string $rankingMode,
         Collection $fairScoresByEmployeeId,
+        int $shiftPatternId,
+        Collection $homeShiftPatternsByEmployeeId,
+        Collection $restDaysByEmployeeId,
     ): Collection {
         $ranked = $pool->map(fn (Employee $employee) => $this->evaluateCandidate(
             $employee,
@@ -57,6 +65,9 @@ final class SlotCandidateRanker
             shiftEnd: $shiftEnd,
             rankingMode: $rankingMode,
             fairScoresByEmployeeId: $fairScoresByEmployeeId,
+            shiftPatternId: $shiftPatternId,
+            homeShiftPatternsByEmployeeId: $homeShiftPatternsByEmployeeId,
+            restDaysByEmployeeId: $restDaysByEmployeeId,
         ));
 
         return $this->sortCandidates($ranked, $rankingMode, $fairScoresByEmployeeId);
@@ -67,6 +78,11 @@ final class SlotCandidateRanker
      * active workforce, including employees outside the "automatic" pool (unqualified or
      * rule-violating), each tagged with why they were excluded (ProjectPlan.md §12.2a) -
      * used for the alternative-candidates lookup and the unfilled-slot advisory list.
+     *
+     * Deliberately does not accept the shift-consistency/rest-day preference inputs that
+     * `rankPool()` does - this is a manual-assignment-support tool (§12.2a: picking from it
+     * is always a manual, deliberate action), not the automatic generation path those soft
+     * preferences are scoped to.
      *
      * @param  Collection<int, float>  $fairScoresByEmployeeId
      * @return Collection<int, CandidateData>
@@ -111,6 +127,8 @@ final class SlotCandidateRanker
 
     /**
      * @param  Collection<int, float>  $fairScoresByEmployeeId
+     * @param  ?Collection<int, int>  $homeShiftPatternsByEmployeeId
+     * @param  ?Collection<int, Collection<int, Carbon>>  $restDaysByEmployeeId
      */
     private function evaluateCandidate(
         Employee $employee,
@@ -120,6 +138,9 @@ final class SlotCandidateRanker
         string $rankingMode,
         Collection $fairScoresByEmployeeId,
         ?string $roleName = null,
+        ?int $shiftPatternId = null,
+        ?Collection $homeShiftPatternsByEmployeeId = null,
+        ?Collection $restDaysByEmployeeId = null,
     ): CandidateData {
         if (! $qualified) {
             return new CandidateData(
@@ -153,13 +174,67 @@ final class SlotCandidateRanker
             )
             : $fairScore;
 
+        // No home pattern recorded yet means this would be the employee's first assignment
+        // this run - treated as neutral (not a mismatch), never penalized.
+        $homePattern = $homeShiftPatternsByEmployeeId?->get($employee->id);
+        $matchesHomeShiftPattern = $homePattern === null || $homePattern === $shiftPatternId;
+
+        $wouldBreakIsolatedRestDay = $this->wouldBreakIsolatedRestDay(
+            $employee,
+            $shiftStart,
+            $restDaysByEmployeeId,
+        );
+
         return new CandidateData(
             employee: $employee,
             score: $score,
             qualified: true,
             ruleCompliant: true,
             exclusionReason: null,
+            matchesHomeShiftPattern: $matchesHomeShiftPattern,
+            wouldBreakIsolatedRestDay: $wouldBreakIsolatedRestDay,
         );
+    }
+
+    /**
+     * ProjectPlan.md-confirmed best-effort heuristic (§12.2, consecutive-rest-days
+     * preference): flags a candidate whose immediately preceding calendar day was their
+     * only rest day so far this run - assigning them today would turn a day that could
+     * still become part of a consecutive pair into an isolated single day off. This only
+     * ever looks backward at already-decided days (no lookahead), consistent with this
+     * codebase's greedy, single-pass suggestion generator (ProjectPlan.md §5.2/§9.3).
+     *
+     * @param  ?Collection<int, Collection<int, Carbon>>  $restDaysByEmployeeId
+     */
+    private function wouldBreakIsolatedRestDay(
+        Employee $employee,
+        Carbon $candidateStart,
+        ?Collection $restDaysByEmployeeId,
+    ): bool {
+        if ($restDaysByEmployeeId === null) {
+            return false;
+        }
+
+        /** @var ?Collection<int, Carbon> $restDays */
+        $restDays = $restDaysByEmployeeId->get($employee->id);
+
+        if ($restDays === null || $restDays->isEmpty()) {
+            return false;
+        }
+
+        $previousDay = $candidateStart->copy()->startOfDay()->subDay();
+        $hadRestYesterday = $restDays->contains(fn (Carbon $day) => $day->isSameDay($previousDay));
+
+        if (! $hadRestYesterday) {
+            return false;
+        }
+
+        $dayBeforeThat = $previousDay->copy()->subDay();
+        $alreadyHadConsecutivePair = $restDays->contains(fn (Carbon $day) => $day->isSameDay($dayBeforeThat));
+
+        // Yesterday was a rest day; if the day before that was ALSO a rest day, the
+        // consecutive pair already happened and today's assignment doesn't break anything.
+        return ! $alreadyHadConsecutivePair;
     }
 
     private function contextFor(Employee $employee, Carbon $shiftStart, Carbon $shiftEnd): EmployeeScheduleContext
@@ -173,12 +248,26 @@ final class SlotCandidateRanker
             ->with('shiftPattern')
             ->get();
 
+        // Deliberately independent of schedule_id/week_start_date - MinRestBetweenShiftsRule
+        // must catch a rest-gap violation even when the two shifts fall in different weeks'
+        // Schedule rows (e.g. Sunday-evening in last week's schedule vs. Monday-morning in
+        // this week's).
+        $adjacentAssignments = ShiftAssignment::query()
+            ->where('employee_id', $employee->id)
+            ->whereBetween('work_date', [
+                $shiftStart->copy()->subDay()->startOfDay(),
+                $shiftEnd->copy()->addDay()->endOfDay(),
+            ])
+            ->with('shiftPattern')
+            ->get();
+
         return new EmployeeScheduleContext(
             employee: $employee,
             candidateStart: $shiftStart,
             candidateEnd: $shiftEnd,
             existingAssignmentsThisWeek: $existingAssignments,
             maxWeeklyHours: $maxWeeklyHours,
+            adjacentAssignments: $adjacentAssignments,
         );
     }
 
@@ -201,10 +290,29 @@ final class SlotCandidateRanker
                 $fairA = (float) $fairScoresByEmployeeId->get($a->employee->id, 0.0);
                 $fairB = (float) $fairScoresByEmployeeId->get($b->employee->id, 0.0);
 
-                return $fairA <=> $fairB;
+                $fairCompare = $fairA <=> $fairB;
+                if ($fairCompare !== 0) {
+                    return $fairCompare;
+                }
+            } else {
+                $scoreCompare = $a->score <=> $b->score;
+                if ($scoreCompare !== 0) {
+                    return $scoreCompare;
+                }
             }
 
-            return $a->score <=> $b->score;
+            // Tiebreak 1 (soft shift-consistency preference, ProjectPlan.md-confirmed):
+            // prefer whoever matches their "home" shift pattern for this run. Never
+            // overrides fairness/cost - only decides among otherwise-tied candidates.
+            $homeMatchCompare = ($b->matchesHomeShiftPattern <=> $a->matchesHomeShiftPattern);
+            if ($homeMatchCompare !== 0) {
+                return $homeMatchCompare;
+            }
+
+            // Tiebreak 2 (soft consecutive-rest-day preference): prefer whoever assigning
+            // today would NOT turn into an isolated single day off. Weakest tier - only
+            // fires among candidates already tied on everything else above.
+            return $a->wouldBreakIsolatedRestDay <=> $b->wouldBreakIsolatedRestDay;
         })->values();
 
         return $sortedEligible->merge($excluded->values());

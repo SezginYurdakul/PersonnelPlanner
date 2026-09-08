@@ -17,6 +17,8 @@ final readonly class CandidateData
         public bool $qualified,
         public bool $ruleCompliant,
         public ?string $exclusionReason,
+        public bool $matchesHomeShiftPattern = false,
+        public bool $wouldBreakIsolatedRestDay = false,
     ) {
     }
 

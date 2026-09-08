@@ -60,7 +60,21 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
         $secondaryTaskCounts = collect();
         $unfilled = collect();
 
+        // Soft shift-consistency preference (ProjectPlan.md-confirmed): the shift_pattern_id
+        // an employee is first assigned to this run becomes their "home" pattern - set once,
+        // never overwritten, in-memory only for this generation pass.
+        $homeShiftPatterns = collect();
+
+        // Soft consecutive-rest-day preference bookkeeping: every employee who has appeared
+        // in at least one role's candidate pool this run (so someone never in scope for any
+        // role isn't wrongly counted as "resting"), and each employee's rest days recorded
+        // so far as the day-by-day loop below progresses.
+        $poolEmployeeIds = collect();
+        $restDaysByEmployee = collect();
+
         foreach ($days as $day) {
+            $assignedToday = collect();
+
             foreach ($shiftPatterns as $shiftPattern) {
                 [$shiftStart, $shiftEnd] = $this->shiftTimeRange($day, $shiftPattern);
 
@@ -68,7 +82,18 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
 
                 foreach ($stationRoles as $role) {
                     $pool = $this->buildCandidatePool($day, $role);
-                    $ranked = $this->ranker->rankPool($pool, $shiftStart, $shiftEnd, $request->rankingMode, $fairScores);
+                    $poolEmployeeIds = $poolEmployeeIds->merge($pool->pluck('id'));
+
+                    $ranked = $this->ranker->rankPool(
+                        $pool,
+                        $shiftStart,
+                        $shiftEnd,
+                        $request->rankingMode,
+                        $fairScores,
+                        $shiftPattern->id,
+                        $homeShiftPatterns,
+                        $restDaysByEmployee,
+                    );
 
                     $winner = $ranked->first(fn (CandidateData $c) => $c->isEligible());
 
@@ -103,6 +128,11 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
                     $hours = $shiftStart->floatDiffInHours($shiftEnd);
                     $fairScores->put($winner->employee->id, (float) $fairScores->get($winner->employee->id, 0.0) + $hours);
 
+                    if (! $homeShiftPatterns->has($winner->employee->id)) {
+                        $homeShiftPatterns->put($winner->employee->id, $shiftPattern->id);
+                    }
+
+                    $assignedToday->put($winner->employee->id, true);
                     $stationAssignmentsThisSlot->push(['employee' => $winner->employee, 'role' => $role]);
                 }
 
@@ -117,8 +147,21 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
                         $stationAssignmentsThisSlot,
                         $secondaryTaskCounts,
                         $unfilled,
+                        $assignedToday,
                     );
                 }
+            }
+
+            foreach ($poolEmployeeIds->unique() as $employeeId) {
+                if ($assignedToday->has($employeeId)) {
+                    continue;
+                }
+
+                if (! $restDaysByEmployee->has($employeeId)) {
+                    $restDaysByEmployee->put($employeeId, collect());
+                }
+
+                $restDaysByEmployee->get($employeeId)->push($day->copy());
             }
         }
 
@@ -194,6 +237,9 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
      * @param  Collection<int, array{employee: Employee, role: SchedulingRole}>  $stationAssignmentsThisSlot
      * @param  Collection<int, float>  $secondaryTaskCounts
      * @param  Collection<int, UnfilledSlotData>  $unfilled
+     * @param  Collection<int, bool>  $assignedToday  employee_id => true for anyone already
+     *   given any assignment today - a secondary task also counts as "worked today" for the
+     *   consecutive-rest-day bookkeeping in generate().
      */
     private function assignSecondaryTask(
         Schedule $schedule,
@@ -205,6 +251,7 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
         Collection $stationAssignmentsThisSlot,
         Collection $secondaryTaskCounts,
         Collection $unfilled,
+        Collection $assignedToday,
     ): void {
         $candidatePool = match ($task->attachment_type) {
             'station' => $stationAssignmentsThisSlot
@@ -248,5 +295,6 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
         ));
 
         $secondaryTaskCounts->put($winner->id, (float) $secondaryTaskCounts->get($winner->id, 0) + 1);
+        $assignedToday->put($winner->id, true);
     }
 }

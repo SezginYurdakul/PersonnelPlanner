@@ -12,7 +12,7 @@ return [
      */
     'rules' => [
         MaxWeeklyHoursRule::class => ['enabled' => true],
-        MinRestBetweenShiftsRule::class => ['enabled' => false],
+        MinRestBetweenShiftsRule::class => ['enabled' => true],
         ConsecutiveNightShiftsRule::class => ['enabled' => false],
         WeeklyMandatoryRestDayRule::class => ['enabled' => false],
     ],

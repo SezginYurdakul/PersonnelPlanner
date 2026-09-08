@@ -138,12 +138,26 @@ final class ShiftAssignmentService implements ShiftAssignmentServiceContract
             $end->addDay();
         }
 
+        // Deliberately independent of schedule_id - MinRestBetweenShiftsRule must catch a
+        // rest-gap violation even when the adjacent shift lives in a different week's
+        // Schedule row.
+        $adjacentAssignments = ShiftAssignment::query()
+            ->where('employee_id', $employee->id)
+            ->where('id', '!=', $assignment->id)
+            ->whereBetween('work_date', [
+                $start->copy()->subDay()->startOfDay(),
+                $end->copy()->addDay()->endOfDay(),
+            ])
+            ->with('shiftPattern')
+            ->get();
+
         $context = new EmployeeScheduleContext(
             employee: $employee,
             candidateStart: $start,
             candidateEnd: $end,
             existingAssignmentsThisWeek: $existingAssignments,
             maxWeeklyHours: $maxWeeklyHours,
+            adjacentAssignments: $adjacentAssignments,
         );
 
         return [
