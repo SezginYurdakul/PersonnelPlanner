@@ -59,9 +59,9 @@ export function ManualAssignmentFormModal({
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-lg rounded-2xl border border-visser-border bg-white p-6 shadow-xl">
+      <div className="w-full max-w-lg rounded-2xl border border-x-border bg-white p-6 shadow-xl">
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-base font-extrabold text-visser-brown">Assign — {roleName}</h3>
+          <h3 className="text-base font-extrabold text-x-brown">Assign — {roleName}</h3>
           <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">
             <i className="fa-solid fa-xmark" />
           </button>
@@ -78,10 +78,10 @@ export function ManualAssignmentFormModal({
           {visibleCandidates?.map((candidate) => (
             <li
               key={candidate.employee.id}
-              className="flex items-center justify-between rounded-xl border border-visser-border p-3"
+              className="flex items-center justify-between rounded-xl border border-x-border p-3"
             >
               <div>
-                <p className="text-sm font-bold text-visser-brown">
+                <p className="text-sm font-bold text-x-brown">
                   {candidate.employee.first_name} {candidate.employee.last_name}
                 </p>
                 <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">

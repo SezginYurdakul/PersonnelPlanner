@@ -1,9 +1,9 @@
-import { useForm, useWatch } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
-import { TimeInputHint } from '../../components/ui/TimeInputHint';
+import { TimeSelect } from '../../components/ui/TimeSelect';
 import type { ShiftPattern } from '../../types/lines';
 
 const schema = z.object({
@@ -38,9 +38,6 @@ export function ShiftPatternFormModal({
     },
   });
 
-  const startTime = useWatch({ control, name: 'start_time' });
-  const endTime = useWatch({ control, name: 'end_time' });
-
   async function submit(values: FormValues) {
     await onSubmit(values);
     onClose();
@@ -62,24 +59,22 @@ export function ShiftPatternFormModal({
             <label className="mb-1 block text-sm font-medium text-slate-700">
               {t('shift_patterns.start_time')}
             </label>
-            <input
-              type="time"
-              className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
-              {...register('start_time')}
+            <Controller
+              control={control}
+              name="start_time"
+              render={({ field }) => <TimeSelect value={field.value} onChange={field.onChange} />}
             />
-            <TimeInputHint time={startTime} />
             {errors.start_time && <p className="mt-1 text-sm text-red-600">{errors.start_time.message}</p>}
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
               {t('shift_patterns.end_time')}
             </label>
-            <input
-              type="time"
-              className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
-              {...register('end_time')}
+            <Controller
+              control={control}
+              name="end_time"
+              render={({ field }) => <TimeSelect value={field.value} onChange={field.onChange} />}
             />
-            <TimeInputHint time={endTime} />
             {errors.end_time && <p className="mt-1 text-sm text-red-600">{errors.end_time.message}</p>}
           </div>
         </div>

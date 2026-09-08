@@ -1,5 +1,5 @@
 {
-  "app.name": "Bakkerij Visser",
+  "app.name": "Bakkerij X",
   "auth.login.title": "Sign in",
   "auth.login.email": "Email",
   "auth.login.password": "Password",
@@ -64,7 +64,7 @@
   "dashboard.no_account_count": "{{count}} employee with no linked account",
   "dashboard.no_account_count_other": "{{count}} employees with no linked account",
   "dashboard.title": "Manager Dashboard",
-  "dashboard.subtitle": "Bakkerij Visser workforce overview",
+  "dashboard.subtitle": "Bakkerij X workforce overview",
   "dashboard.kpi.active_staff": "Active Staff",
   "dashboard.kpi.active_staff_breakdown": "{{vast}} permanent · {{uitzendkracht}} agency",
   "dashboard.kpi.no_account": "No Linked Account",

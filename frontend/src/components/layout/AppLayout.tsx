@@ -17,14 +17,14 @@ const navItems = [
 
 function BrandHeader() {
   return (
-    <div className="relative flex h-20 items-center overflow-hidden border-b border-visser-brown-mid bg-visser-brown-dark px-6">
-      <div className="absolute -bottom-4 -right-4 h-20 w-20 rounded-full bg-visser-gold/10 blur-xl" />
+    <div className="relative flex h-20 items-center overflow-hidden border-b border-x-brown-mid bg-x-brown-dark px-6">
+      <div className="absolute -bottom-4 -right-4 h-20 w-20 rounded-full bg-x-gold/10 blur-xl" />
       <div className="z-10 flex items-center space-x-3.5">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-amber-200/30 bg-gradient-to-br from-visser-gold to-visser-gold-dark text-xl font-extrabold text-visser-brown shadow-lg shadow-visser-gold/20">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-amber-200/30 bg-gradient-to-br from-x-gold to-x-gold-dark text-xl font-extrabold text-x-brown shadow-lg shadow-x-gold/20">
           <i className="fa-solid fa-wheat-awn" />
         </div>
         <div>
-          <span className="block text-base font-extrabold tracking-wider text-white">BAKKERIJ VISSER</span>
+          <span className="block text-base font-extrabold tracking-wider text-white">BAKKERIJ X</span>
           <span className="block text-[10px] font-semibold uppercase tracking-widest text-amber-300/80">
             Personeelsplanning
           </span>
@@ -48,8 +48,8 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
           className={({ isActive }) =>
             `group flex items-center rounded-xl px-4 py-3 text-sm font-medium transition-all ${
               isActive
-                ? 'bg-visser-gold font-semibold text-slate-900 shadow-md shadow-visser-gold/20'
-                : 'text-slate-300 hover:bg-visser-brown-mid hover:text-white'
+                ? 'bg-x-gold font-semibold text-slate-900 shadow-md shadow-x-gold/20'
+                : 'text-slate-300 hover:bg-x-brown-mid hover:text-white'
             }`
           }
         >
@@ -57,7 +57,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
             <>
               <i
                 className={`fa-solid ${item.icon} mr-3 w-5 ${
-                  isActive ? 'text-visser-brown' : 'text-amber-400/70 group-hover:text-amber-400'
+                  isActive ? 'text-x-brown' : 'text-amber-400/70 group-hover:text-amber-400'
                 }`}
               />
               {t(item.labelKey)}
@@ -80,10 +80,10 @@ function UserFooter() {
     .toUpperCase();
 
   return (
-    <div className="border-t border-visser-brown-mid bg-visser-brown-dark p-4">
+    <div className="border-t border-x-brown-mid bg-x-brown-dark p-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full border border-amber-500/30 bg-visser-brown-mid font-bold text-amber-300">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full border border-amber-500/30 bg-x-brown-mid font-bold text-amber-300">
             {initials}
           </div>
           <div>
@@ -95,7 +95,7 @@ function UserFooter() {
           type="button"
           onClick={() => void logout()}
           title={t('auth.logout')}
-          className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-visser-brown-mid hover:text-rose-400"
+          className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-x-brown-mid hover:text-rose-400"
         >
           <i className="fa-solid fa-right-from-bracket text-base" />
         </button>
@@ -108,9 +108,9 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
   return (
-    <div className="flex h-screen bg-visser-cream">
+    <div className="flex h-screen bg-x-cream">
       {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 hidden w-72 flex-col border-r border-visser-brown-dark bg-visser-brown text-white lg:flex">
+      <aside className="fixed inset-y-0 hidden w-72 flex-col border-r border-x-brown-dark bg-x-brown text-white lg:flex">
         <BrandHeader />
         <NavLinks />
         <UserFooter />
@@ -118,14 +118,14 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
       {/* Mobile sidebar drawer */}
       {isMobileOpen && (
-        <div className="fixed inset-0 z-50 bg-visser-brown/80 backdrop-blur-sm lg:hidden">
-          <div className="fixed inset-y-0 left-0 flex w-72 flex-col border-r border-visser-brown-mid bg-visser-brown text-white shadow-2xl">
-            <div className="flex h-20 items-center justify-between border-b border-visser-brown-mid bg-visser-brown-dark px-6">
+        <div className="fixed inset-0 z-50 bg-x-brown/80 backdrop-blur-sm lg:hidden">
+          <div className="fixed inset-y-0 left-0 flex w-72 flex-col border-r border-x-brown-mid bg-x-brown text-white shadow-2xl">
+            <div className="flex h-20 items-center justify-between border-b border-x-brown-mid bg-x-brown-dark px-6">
               <div className="flex items-center space-x-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-visser-gold text-lg font-bold text-visser-brown">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-x-gold text-lg font-bold text-x-brown">
                   <i className="fa-solid fa-wheat-awn" />
                 </div>
-                <span className="text-base font-extrabold text-white">BAKKERIJ VISSER</span>
+                <span className="text-base font-extrabold text-white">BAKKERIJ X</span>
               </div>
               <button
                 type="button"
@@ -143,15 +143,15 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
       {/* Main content */}
       <div className="flex min-w-0 flex-1 flex-col lg:pl-72">
-        <header className="sticky top-0 z-20 flex h-16 items-center border-b border-visser-border bg-white px-4 shadow-sm sm:px-6 lg:hidden">
+        <header className="sticky top-0 z-20 flex h-16 items-center border-b border-x-border bg-white px-4 shadow-sm sm:px-6 lg:hidden">
           <button
             type="button"
             onClick={() => setIsMobileOpen(true)}
-            className="rounded-lg p-2 text-visser-brown hover:bg-visser-warmbg"
+            className="rounded-lg p-2 text-x-brown hover:bg-x-warmbg"
           >
             <i className="fa-solid fa-bars text-xl" />
           </button>
-          <span className="ml-3 text-sm font-extrabold text-visser-brown">BAKKERIJ VISSER</span>
+          <span className="ml-3 text-sm font-extrabold text-x-brown">BAKKERIJ X</span>
         </header>
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">{children}</main>
       </div>

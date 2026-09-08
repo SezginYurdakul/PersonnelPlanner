@@ -38,18 +38,18 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-visser-brown">
+    <div className="flex min-h-screen items-center justify-center bg-x-brown">
       <form
         onSubmit={handleSubmit(onSubmit)}
-        className="w-full max-w-sm rounded-2xl border border-visser-brown-mid bg-white p-8 shadow-2xl"
+        className="w-full max-w-sm rounded-2xl border border-x-brown-mid bg-white p-8 shadow-2xl"
       >
         <div className="mb-6 flex items-center space-x-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-amber-200/30 bg-gradient-to-br from-visser-gold to-visser-gold-dark text-xl font-extrabold text-visser-brown shadow-lg shadow-visser-gold/20">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-amber-200/30 bg-gradient-to-br from-x-gold to-x-gold-dark text-xl font-extrabold text-x-brown shadow-lg shadow-x-gold/20">
             <i className="fa-solid fa-wheat-awn" />
           </div>
           <div>
-            <span className="block text-sm font-extrabold tracking-wider text-visser-brown">
-              BAKKERIJ VISSER
+            <span className="block text-sm font-extrabold tracking-wider text-x-brown">
+              BAKKERIJ X
             </span>
             <span className="block text-[10px] font-semibold uppercase tracking-widest text-amber-700/80">
               Personeelsplanning
@@ -57,7 +57,7 @@ export function LoginPage() {
           </div>
         </div>
 
-        <h1 className="mb-6 text-xl font-extrabold text-visser-brown">{t('auth.login.title')}</h1>
+        <h1 className="mb-6 text-xl font-extrabold text-x-brown">{t('auth.login.title')}</h1>
 
         <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="email">
           {t('auth.login.email')}
@@ -65,7 +65,7 @@ export function LoginPage() {
         <input
           id="email"
           type="email"
-          className="mb-3 w-full rounded-xl border border-visser-border bg-visser-cream px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-visser-gold"
+          className="mb-3 w-full rounded-xl border border-x-border bg-x-cream px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-x-gold"
           {...register('email')}
         />
         {errors.email && (
@@ -78,7 +78,7 @@ export function LoginPage() {
         <input
           id="password"
           type="password"
-          className="mb-4 w-full rounded-xl border border-visser-border bg-visser-cream px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-visser-gold"
+          className="mb-4 w-full rounded-xl border border-x-border bg-x-cream px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-x-gold"
           {...register('password')}
         />
         {errors.password && (
@@ -90,7 +90,7 @@ export function LoginPage() {
         <button
           type="submit"
           disabled={isSubmitting}
-          className="w-full rounded-xl bg-visser-gold px-4 py-2.5 text-sm font-bold text-visser-brown shadow-md shadow-visser-gold/30 transition-colors hover:bg-visser-gold-dark disabled:opacity-50"
+          className="w-full rounded-xl bg-x-gold px-4 py-2.5 text-sm font-bold text-x-brown shadow-md shadow-x-gold/30 transition-colors hover:bg-x-gold-dark disabled:opacity-50"
         >
           {t('auth.login.submit')}
         </button>

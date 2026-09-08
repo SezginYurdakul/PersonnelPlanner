@@ -25,12 +25,12 @@ function KpiCard({ label, value, hint, icon, badge }: KpiCardProps) {
       <div className="absolute -bottom-6 -right-6 h-24 w-24 rounded-full bg-amber-100/50 blur-xl" />
       <div className="flex items-center justify-between">
         <span className="text-xs font-bold uppercase tracking-wider text-slate-500">{label}</span>
-        <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-amber-200/50 bg-amber-50 text-xl font-bold text-visser-brown">
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-amber-200/50 bg-amber-50 text-xl font-bold text-x-brown">
           <i className={`fa-solid ${icon}`} />
         </div>
       </div>
       <div className="mt-4 flex items-baseline justify-between">
-        <span className="text-3xl font-black tabular-nums text-visser-brown">{value}</span>
+        <span className="text-3xl font-black tabular-nums text-x-brown">{value}</span>
         {badge && (
           <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ${badgeToneClasses[badge.tone]}`}>
             {badge.text}
@@ -60,7 +60,7 @@ export function DashboardPage() {
           {t('dashboard.subtitle')}
         </span>
       </div>
-      <h1 className="mb-6 text-xl font-extrabold tracking-tight text-visser-brown">
+      <h1 className="mb-6 text-xl font-extrabold tracking-tight text-x-brown">
         {t('dashboard.title')}
       </h1>
 
@@ -112,20 +112,20 @@ export function DashboardPage() {
 
       <div className="mt-6">
         <Card>
-          <h2 className="text-base font-extrabold text-visser-brown">{t('dashboard.setup.title')}</h2>
+          <h2 className="text-base font-extrabold text-x-brown">{t('dashboard.setup.title')}</h2>
           <p className="mb-4 text-xs text-slate-500">{t('dashboard.setup.subtitle')}</p>
 
           <div className="space-y-3">
             {lines?.map((line) => (
               <div
                 key={line.id}
-                className="flex items-center justify-between rounded-xl border border-visser-border bg-visser-cream p-4"
+                className="flex items-center justify-between rounded-xl border border-x-border bg-x-cream p-4"
               >
                 <div className="flex items-center space-x-3">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-visser-brown text-xs font-bold text-amber-300">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-x-brown text-xs font-bold text-amber-300">
                     {line.code}
                   </span>
-                  <h4 className="text-xs font-extrabold text-visser-brown">{line.name}</h4>
+                  <h4 className="text-xs font-extrabold text-x-brown">{line.name}</h4>
                 </div>
                 <span
                   className={`rounded-lg border px-2.5 py-1 text-xs font-bold ${

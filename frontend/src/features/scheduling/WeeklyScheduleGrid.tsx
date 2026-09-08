@@ -169,8 +169,8 @@ export function WeeklyScheduleGrid({ weekStartDate }: WeeklyScheduleGridProps) {
   function jumpToAssignment(assignmentId: number) {
     const el = document.querySelector(`[data-assignment-id="${assignmentId}"]`);
     el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    el?.classList.add('ring-2', 'ring-visser-gold');
-    setTimeout(() => el?.classList.remove('ring-2', 'ring-visser-gold'), 1500);
+    el?.classList.add('ring-2', 'ring-x-gold');
+    setTimeout(() => el?.classList.remove('ring-2', 'ring-x-gold'), 1500);
   }
 
   const blockingCount = unfilledSlots.filter((s) => s.blocking).length;
@@ -182,7 +182,7 @@ export function WeeklyScheduleGrid({ weekStartDate }: WeeklyScheduleGridProps) {
         <Card>
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <h2 className="text-base font-extrabold text-visser-brown">
+              <h2 className="text-base font-extrabold text-x-brown">
                 Week of {dayjs(weekStartDate).format('D MMM YYYY')}
               </h2>
               {schedule && (
@@ -206,7 +206,7 @@ export function WeeklyScheduleGrid({ weekStartDate }: WeeklyScheduleGridProps) {
         </Card>
 
         <Card>
-          <h3 className="mb-3 text-sm font-extrabold text-visser-brown">Generate Suggestion</h3>
+          <h3 className="mb-3 text-sm font-extrabold text-x-brown">Generate Suggestion</h3>
           <div className="flex flex-wrap items-end gap-4">
             <div>
               <label className="mb-1 block text-xs font-semibold text-slate-600">Lines</label>
@@ -299,13 +299,13 @@ export function WeeklyScheduleGrid({ weekStartDate }: WeeklyScheduleGridProps) {
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr>
-                  <th className="w-40 border-b border-visser-border p-2 text-left text-xs font-bold uppercase text-slate-500">
+                  <th className="w-40 border-b border-x-border p-2 text-left text-xs font-bold uppercase text-slate-500">
                     Line / Shift
                   </th>
                   {days.map((day) => (
                     <th
                       key={day}
-                      className="border-b border-visser-border p-2 text-left text-xs font-bold uppercase text-slate-500"
+                      className="border-b border-x-border p-2 text-left text-xs font-bold uppercase text-slate-500"
                     >
                       {dayjs(day).format('ddd')}
                       <div className="font-normal normal-case tabular-nums text-slate-400">
@@ -319,12 +319,12 @@ export function WeeklyScheduleGrid({ weekStartDate }: WeeklyScheduleGridProps) {
                 {activeLines.map((line) =>
                   activeShiftPatterns.map((shiftPattern) => (
                     <tr key={`${line.id}-${shiftPattern.id}`}>
-                      <td className="border-b border-visser-border p-2 align-top text-xs font-bold text-visser-brown">
+                      <td className="border-b border-x-border p-2 align-top text-xs font-bold text-x-brown">
                         {line.name}
                         <div className="font-normal text-slate-400">{shiftPattern.name}</div>
                       </td>
                       {days.map((day) => (
-                        <td key={day} className="border-b border-visser-border p-1 align-top">
+                        <td key={day} className="border-b border-x-border p-1 align-top">
                           <ScheduleGridCell
                             lineId={line.id}
                             shiftPatternId={shiftPattern.id}

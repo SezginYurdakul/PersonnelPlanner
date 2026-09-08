@@ -148,7 +148,7 @@ There is also one internal support domain:
 
 ### 7.0 Brand
 
-This build is for a real customer, **Bakkerij Visser**, an industrial bakery. The product carries their brand identity throughout the admin application (not a generic "PersonnelPlanner" skin) - name, wordmark, and the color direction below are Bakkerij Visser's, not a placeholder.
+This build targets an industrial bakery customer, provisionally named **Bakkerij X** while the real customer/brand is not yet finalized. The product carries a brand identity throughout the admin application (not a generic "PersonnelPlanner" skin) - name, wordmark, and the color direction below are placeholder-but-consistent, ready to swap to the real brand once confirmed.
 
 ### 7.1 Design Theme
 

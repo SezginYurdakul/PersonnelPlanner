@@ -22,8 +22,8 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-sm rounded-2xl border border-visser-border bg-white p-6 shadow-xl">
-        <h3 className="text-base font-extrabold text-visser-brown">{title}</h3>
+      <div className="w-full max-w-sm rounded-2xl border border-x-border bg-white p-6 shadow-xl">
+        <h3 className="text-base font-extrabold text-x-brown">{title}</h3>
         <div className="mt-2 text-sm text-slate-600">{message}</div>
         <div className="mt-6 flex justify-end gap-3">
           <Button variant="secondary" type="button" onClick={onCancel}>

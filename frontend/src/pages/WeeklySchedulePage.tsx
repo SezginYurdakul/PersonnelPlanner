@@ -34,7 +34,7 @@ export function WeeklySchedulePage() {
   return (
     <AppLayout>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-xl font-extrabold tracking-tight text-visser-brown">Weekly Schedule</h1>
+        <h1 className="text-xl font-extrabold tracking-tight text-x-brown">Weekly Schedule</h1>
         <div className="flex items-center gap-4">
           <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
             Week starts on

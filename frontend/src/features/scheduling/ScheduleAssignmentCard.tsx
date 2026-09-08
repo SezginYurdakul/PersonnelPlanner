@@ -33,7 +33,7 @@ export function ScheduleAssignmentCard({ assignment, onClick }: ScheduleAssignme
       } ${
         isSecondaryTask
           ? 'border-blue-200 bg-blue-50 text-blue-900'
-          : 'border-visser-border bg-white text-visser-brown'
+          : 'border-x-border bg-white text-x-brown'
       }`}
     >
       <div className="flex items-center justify-between gap-1">

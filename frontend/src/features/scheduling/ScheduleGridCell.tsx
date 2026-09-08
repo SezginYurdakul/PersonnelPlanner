@@ -40,7 +40,7 @@ export function ScheduleGridCell({
       ref={setNodeRef}
       data-cell-id={cellId}
       className={`min-h-[72px] space-y-1 rounded-xl border p-1.5 transition-colors ${
-        isOver ? 'border-visser-gold bg-amber-50' : 'border-transparent'
+        isOver ? 'border-x-gold bg-amber-50' : 'border-transparent'
       }`}
     >
       {stationAssignments.map((assignment) => (
@@ -85,7 +85,7 @@ export function ScheduleGridCell({
         <button
           type="button"
           onClick={() => onSlotClick({ lineId, shiftPatternId, workDate })}
-          className="flex h-full min-h-[56px] w-full items-center justify-center rounded-lg text-[11px] text-slate-300 hover:bg-visser-warmbg hover:text-slate-400"
+          className="flex h-full min-h-[56px] w-full items-center justify-center rounded-lg text-[11px] text-slate-300 hover:bg-x-warmbg hover:text-slate-400"
         >
           vrij
         </button>

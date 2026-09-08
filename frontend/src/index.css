@@ -4,16 +4,16 @@
 @theme {
   --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
 
-  --color-visser-brown: #3D2817;
-  --color-visser-brown-dark: #2C1D10;
-  --color-visser-brown-mid: #4E3420;
-  --color-visser-gold: #F5C518;
-  --color-visser-gold-dark: #D4A017;
-  --color-visser-cream: #FAF9F5;
-  --color-visser-warmbg: #F3F0E6;
-  --color-visser-border: #EBE7DF;
+  --color-x-brown: #3D2817;
+  --color-x-brown-dark: #2C1D10;
+  --color-x-brown-mid: #4E3420;
+  --color-x-gold: #F5C518;
+  --color-x-gold-dark: #D4A017;
+  --color-x-cream: #FAF9F5;
+  --color-x-warmbg: #F3F0E6;
+  --color-x-border: #EBE7DF;
 }
 
 body {
-  background-color: var(--color-visser-cream);
+  background-color: var(--color-x-cream);
 }

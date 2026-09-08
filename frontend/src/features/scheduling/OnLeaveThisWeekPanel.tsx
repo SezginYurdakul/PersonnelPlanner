@@ -30,7 +30,7 @@ export function OnLeaveThisWeekPanel({ weekStartDate }: OnLeaveThisWeekPanelProp
 
   return (
     <Card>
-      <h3 className="mb-3 text-sm font-extrabold text-visser-brown">On Leave This Week</h3>
+      <h3 className="mb-3 text-sm font-extrabold text-x-brown">On Leave This Week</h3>
       <ul className="space-y-2">
         {thisWeek.map((request) => (
           <li key={request.id} className="flex items-center justify-between text-xs">
