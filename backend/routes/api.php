@@ -15,6 +15,8 @@ use App\Modules\Scheduling\Http\Controllers\ScheduleSuggestionController;
 use App\Modules\Scheduling\Http\Controllers\ShiftAssignmentController;
 use App\Modules\Staff\Http\Controllers\AgencyController;
 use App\Modules\Staff\Http\Controllers\EmployeeController;
+use App\Modules\TimeAttendance\Http\Controllers\TimeClockEntryController;
+use App\Modules\TimeAttendance\Http\Controllers\TimeClockImportController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
@@ -62,6 +64,11 @@ Route::prefix('v1')->group(function () {
                 ->parameters(['shift-assignments' => 'shift_assignment'])
                 ->only(['store', 'update', 'destroy']);
             Route::patch('/shift-assignments/{shift_assignment}/move', [ShiftAssignmentController::class, 'move']);
+
+            Route::post('/time-clock-imports/preview', [TimeClockImportController::class, 'preview']);
+            Route::post('/time-clock-imports/commit', [TimeClockImportController::class, 'commit']);
+            Route::apiResource('time-clock-entries', TimeClockEntryController::class)
+                ->parameters(['time-clock-entries' => 'time_clock_entry']);
         });
     });
 });

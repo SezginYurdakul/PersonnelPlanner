@@ -13,6 +13,7 @@ const navItems = [
   { to: '/shift-patterns', labelKey: 'nav.shift_patterns', icon: 'fa-calendar-days' },
   { to: '/pay-rate-surcharge-rules', labelKey: 'nav.pay_rate_rules', icon: 'fa-file-invoice-dollar' },
   { to: '/leave-requests', labelKey: 'nav.leave_requests', icon: 'fa-calendar-check' },
+  { to: '/time-attendance', labelKey: 'nav.time_attendance', icon: 'fa-clock' },
 ];
 
 function BrandHeader() {

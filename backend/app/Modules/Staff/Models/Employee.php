@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Modules\Leave\Models\LeaveRequest;
 use App\Modules\Lines\Models\Line;
 use App\Modules\Lines\Models\SchedulingRole;
+use App\Modules\TimeAttendance\Models\TimeClockEntry;
 use Database\Factories\EmployeeFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -110,5 +111,13 @@ class Employee extends Model
     public function leaveRequests(): HasMany
     {
         return $this->hasMany(LeaveRequest::class);
+    }
+
+    /**
+     * @return HasMany<TimeClockEntry, $this>
+     */
+    public function timeClockEntries(): HasMany
+    {
+        return $this->hasMany(TimeClockEntry::class);
     }
 }

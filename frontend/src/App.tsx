@@ -10,6 +10,7 @@ import { ShiftPatternsPage } from './pages/ShiftPatternsPage';
 import { PayRateSurchargeRulesPage } from './pages/PayRateSurchargeRulesPage';
 import { LeaveRequestsPage } from './pages/LeaveRequestsPage';
 import { WeeklySchedulePage } from './pages/WeeklySchedulePage';
+import { TimeAttendanceImportPage } from './pages/TimeAttendanceImportPage';
 import { ProtectedRoute } from './components/layout/ProtectedRoute';
 
 export function App() {
@@ -94,6 +95,14 @@ export function App() {
           element={
             <ProtectedRoute>
               <WeeklySchedulePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/time-attendance"
+          element={
+            <ProtectedRoute>
+              <TimeAttendanceImportPage />
             </ProtectedRoute>
           }
         />

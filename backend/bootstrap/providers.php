@@ -6,6 +6,7 @@ use App\Modules\Leave\LeaveServiceProvider;
 use App\Modules\Lines\LinesServiceProvider;
 use App\Modules\Scheduling\SchedulingServiceProvider;
 use App\Modules\Staff\StaffServiceProvider;
+use App\Modules\TimeAttendance\TimeAttendanceServiceProvider;
 use App\Providers\AppServiceProvider;
 
 return [
@@ -18,4 +19,5 @@ return [
     LeaveServiceProvider::class,
     DashboardServiceProvider::class,
     SchedulingServiceProvider::class,
+    TimeAttendanceServiceProvider::class,
 ];
