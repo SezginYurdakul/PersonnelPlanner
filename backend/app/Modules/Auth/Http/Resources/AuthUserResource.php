@@ -20,6 +20,11 @@ class AuthUserResource extends JsonResource
             'locale' => $this->locale,
             'visibility_scope' => $this->visibility_scope,
             'roles' => $this->getRoleNames(),
+            'employee' => $this->whenLoaded('employee', fn () => $this->employee ? [
+                'id' => $this->employee->id,
+                'first_name' => $this->employee->first_name,
+                'last_name' => $this->employee->last_name,
+            ] : null),
         ];
     }
 }

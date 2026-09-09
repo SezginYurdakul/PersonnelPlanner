@@ -18,6 +18,7 @@ class DatabaseSeeder extends Seeder
             RoleSeeder::class,
             AdminUserSeeder::class,
             LeaveTypeSeeder::class,
+            CompanySettingSeeder::class,
             BakeryXTestDataSeeder::class,
         ]);
     }

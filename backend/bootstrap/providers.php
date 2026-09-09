@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\Auth\AuthServiceProvider;
+use App\Modules\CompanySettings\CompanySettingsServiceProvider;
 use App\Modules\Dashboard\DashboardServiceProvider;
 use App\Modules\Leave\LeaveServiceProvider;
 use App\Modules\Lines\LinesServiceProvider;
@@ -20,4 +21,5 @@ return [
     DashboardServiceProvider::class,
     SchedulingServiceProvider::class,
     TimeAttendanceServiceProvider::class,
+    CompanySettingsServiceProvider::class,
 ];

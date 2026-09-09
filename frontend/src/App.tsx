@@ -11,6 +11,7 @@ import { PayRateSurchargeRulesPage } from './pages/PayRateSurchargeRulesPage';
 import { LeaveRequestsPage } from './pages/LeaveRequestsPage';
 import { WeeklySchedulePage } from './pages/WeeklySchedulePage';
 import { TimeAttendanceImportPage } from './pages/TimeAttendanceImportPage';
+import { CompanySettingsPage } from './pages/CompanySettingsPage';
 import { ProtectedRoute } from './components/layout/ProtectedRoute';
 
 export function App() {
@@ -103,6 +104,14 @@ export function App() {
           element={
             <ProtectedRoute>
               <TimeAttendanceImportPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/company-settings"
+          element={
+            <ProtectedRoute>
+              <CompanySettingsPage />
             </ProtectedRoute>
           }
         />

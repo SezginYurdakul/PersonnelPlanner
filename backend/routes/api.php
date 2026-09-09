@@ -2,6 +2,7 @@
 
 use App\Modules\Auth\Http\Controllers\AuthController;
 use App\Modules\Auth\Http\Controllers\UserController;
+use App\Modules\CompanySettings\Http\Controllers\CompanySettingsController;
 use App\Modules\Dashboard\Http\Controllers\DashboardController;
 use App\Modules\Leave\Http\Controllers\LeaveRequestController;
 use App\Modules\Leave\Http\Controllers\LeaveTypeController;
@@ -26,8 +27,19 @@ Route::prefix('v1')->group(function () {
         Route::post('/auth/logout', [AuthController::class, 'logout']);
         Route::get('/auth/me', [AuthController::class, 'me']);
 
+        // Employee self-service surface (ProjectPlan.md §15/§8b) - open to both `admin` and
+        // `user` roles, since an admin account may also be a linked Employee. Per-endpoint
+        // authorization happens inside each controller (resolving the Employee for the
+        // authenticated User, 403 if none linked), not via route middleware.
+        Route::prefix('me')->group(function () {
+            Route::get('/company-settings', [CompanySettingsController::class, 'showForEmployee']);
+        });
+
         Route::middleware('role:admin')->group(function () {
             Route::get('/dashboard/summary', [DashboardController::class, 'summary']);
+
+            Route::get('/company-settings', [CompanySettingsController::class, 'show']);
+            Route::put('/company-settings', [CompanySettingsController::class, 'update']);
 
             Route::get('/users', [UserController::class, 'index']);
             Route::put('/users/{user}/visibility-scope', [UserController::class, 'updateVisibilityScope']);

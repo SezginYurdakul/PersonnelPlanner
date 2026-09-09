@@ -19,7 +19,7 @@ class AuthController extends Controller
     {
         $user = $this->authService->login($request->credentials());
 
-        return new AuthUserResource($user);
+        return new AuthUserResource($user->loadMissing('employee'));
     }
 
     public function logout(Request $request): JsonResponse
@@ -31,6 +31,6 @@ class AuthController extends Controller
 
     public function me(Request $request): AuthUserResource
     {
-        return new AuthUserResource($request->user());
+        return new AuthUserResource($request->user()->loadMissing('employee'));
     }
 }
