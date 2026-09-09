@@ -12,14 +12,14 @@ class LeaveTypeSeeder extends Seeder
      */
     public function run(): void
     {
-        LeaveType::firstOrCreate(
+        LeaveType::updateOrCreate(
             ['name' => 'Annual Leave - Vakantie'],
-            ['requires_approval' => true],
+            ['slug' => LeaveType::SLUG_VAKANTIE, 'requires_approval' => true],
         );
 
-        LeaveType::firstOrCreate(
+        LeaveType::updateOrCreate(
             ['name' => 'Sick Leave - Ziek'],
-            ['requires_approval' => true],
+            ['slug' => LeaveType::SLUG_ZIEK, 'requires_approval' => true],
         );
 
         LeaveType::firstOrCreate(

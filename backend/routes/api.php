@@ -6,6 +6,7 @@ use App\Modules\CompanySettings\Http\Controllers\CompanySettingsController;
 use App\Modules\Dashboard\Http\Controllers\DashboardController;
 use App\Modules\Leave\Http\Controllers\LeaveRequestController;
 use App\Modules\Leave\Http\Controllers\LeaveTypeController;
+use App\Modules\Leave\Http\Controllers\SelfServiceLeaveRequestController;
 use App\Modules\Lines\Http\Controllers\LineController;
 use App\Modules\Lines\Http\Controllers\PayRateSurchargeRuleController;
 use App\Modules\Lines\Http\Controllers\SchedulingRoleController;
@@ -14,6 +15,8 @@ use App\Modules\Scheduling\Http\Controllers\AlternativeCandidateController;
 use App\Modules\Scheduling\Http\Controllers\ScheduleController;
 use App\Modules\Scheduling\Http\Controllers\ScheduleSuggestionController;
 use App\Modules\Scheduling\Http\Controllers\ShiftAssignmentController;
+use App\Modules\ShiftNotices\Http\Controllers\SelfServiceShiftNoticeController;
+use App\Modules\ShiftNotices\Http\Controllers\ShiftNoticeController;
 use App\Modules\Staff\Http\Controllers\AgencyController;
 use App\Modules\Staff\Http\Controllers\EmployeeController;
 use App\Modules\TimeAttendance\Http\Controllers\TimeClockEntryController;
@@ -33,6 +36,10 @@ Route::prefix('v1')->group(function () {
         // authenticated User, 403 if none linked), not via route middleware.
         Route::prefix('me')->group(function () {
             Route::get('/company-settings', [CompanySettingsController::class, 'showForEmployee']);
+            Route::get('/leave-requests', [SelfServiceLeaveRequestController::class, 'index']);
+            Route::post('/leave-requests', [SelfServiceLeaveRequestController::class, 'store']);
+            Route::get('/shift-notices/eligibility', [SelfServiceShiftNoticeController::class, 'eligibility']);
+            Route::post('/shift-notices', [SelfServiceShiftNoticeController::class, 'store']);
         });
 
         Route::middleware('role:admin')->group(function () {
@@ -81,6 +88,9 @@ Route::prefix('v1')->group(function () {
             Route::post('/time-clock-imports/commit', [TimeClockImportController::class, 'commit']);
             Route::apiResource('time-clock-entries', TimeClockEntryController::class)
                 ->parameters(['time-clock-entries' => 'time_clock_entry']);
+
+            Route::get('/shift-notices', [ShiftNoticeController::class, 'index']);
+            Route::post('/shift-notices/{shift_notice}/acknowledge', [ShiftNoticeController::class, 'acknowledge']);
         });
     });
 });
