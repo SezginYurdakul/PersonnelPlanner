@@ -3,16 +3,17 @@ import { NavLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../features/auth/AuthContext';
 
-const tabItems = [{ to: '/me/schedule', labelKey: 'employee_nav.schedule', icon: 'fa-calendar-week' }];
+const tabItems = [
+  { to: '/me/schedule', labelKey: 'employee_nav.schedule', icon: 'fa-calendar-week' },
+  { to: '/me/leave-request', labelKey: 'employee_nav.leave_request', icon: 'fa-umbrella-beach' },
+  { to: '/me/shift-notice', labelKey: 'employee_nav.shift_notice', icon: 'fa-bell' },
+];
 
 /**
  * The employee-facing shell (ProjectPlan.md §8f) - a bottom tab bar, not AppLayout's admin
  * sidebar. Kept as an entirely separate component (not a variant of AppLayout) since the
  * nav surface, information density, and target device (mobile-first PWA vs. desktop admin
  * panel) differ completely.
- *
- * Only the schedule tab exists so far - leave-request and shift-notice tabs are added once
- * those self-service form pages are built.
  */
 export function EmployeeAppLayout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();

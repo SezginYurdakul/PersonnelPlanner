@@ -1,6 +1,7 @@
 import type { VisibilityScope } from './auth';
 
 export interface EmployeeScheduleAssignment {
+  id: number;
   work_date: string;
   employee: {
     id: number;

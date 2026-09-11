@@ -13,6 +13,8 @@ import { WeeklySchedulePage } from './pages/WeeklySchedulePage';
 import { TimeAttendanceImportPage } from './pages/TimeAttendanceImportPage';
 import { CompanySettingsPage } from './pages/CompanySettingsPage';
 import { EmployeeSchedulePage } from './pages/EmployeeSchedulePage';
+import { LeaveRequestPage } from './pages/LeaveRequestPage';
+import { ShiftNoticePage } from './pages/ShiftNoticePage';
 import { ProtectedRoute } from './components/layout/ProtectedRoute';
 
 export function App() {
@@ -121,6 +123,22 @@ export function App() {
           element={
             <ProtectedRoute>
               <EmployeeSchedulePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/me/leave-request"
+          element={
+            <ProtectedRoute>
+              <LeaveRequestPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/me/shift-notice"
+          element={
+            <ProtectedRoute>
+              <ShiftNoticePage />
             </ProtectedRoute>
           }
         />

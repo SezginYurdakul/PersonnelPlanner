@@ -2,6 +2,7 @@
 
 namespace App\Modules\Scheduling\Http\Resources;
 
+use App\Modules\Scheduling\Models\ShiftAssignment;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -10,7 +11,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * narrow, day-by-day shape distinct from the admin's dense ScheduleResource, since the
  * PWA list is read-only and mobile-first rather than a drag-and-drop grid.
  *
- * @mixin \App\Modules\Scheduling\Models\ShiftAssignment
+ * @mixin ShiftAssignment
  */
 class EmployeeScheduleDayResource extends JsonResource
 {
@@ -20,6 +21,7 @@ class EmployeeScheduleDayResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
+            'id' => $this->id,
             'work_date' => $this->work_date?->toDateString(),
             'employee' => [
                 'id' => $this->employee_id,

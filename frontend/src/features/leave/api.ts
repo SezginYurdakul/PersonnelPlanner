@@ -35,6 +35,22 @@ export async function deleteLeaveRequest(id: number): Promise<void> {
   await apiClient.delete(`/leave-requests/${id}`);
 }
 
+export interface SelfServiceLeaveRequestFormValues {
+  start_date: string;
+  end_date: string;
+  reason?: string;
+}
+
+export async function fetchMyLeaveRequests(): Promise<LeaveRequest[]> {
+  const { data } = await apiClient.get<ApiEnvelope<LeaveRequest[]>>('/me/leave-requests');
+  return data.data;
+}
+
+export async function createMyLeaveRequest(payload: SelfServiceLeaveRequestFormValues): Promise<LeaveRequest> {
+  const { data } = await apiClient.post<ApiEnvelope<LeaveRequest>>('/me/leave-requests', payload);
+  return data.data;
+}
+
 export async function approveLeaveRequest(id: number): Promise<LeaveRequest> {
   const { data } = await apiClient.post<ApiEnvelope<LeaveRequest>>(`/leave-requests/${id}/approve`);
   return data.data;
