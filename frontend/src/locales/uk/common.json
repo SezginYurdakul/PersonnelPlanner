@@ -154,5 +154,12 @@
   "leave.reject": "Reject",
   "leave.empty": "No leave requests yet.",
   "leave.filter.all_statuses": "All statuses",
-  "leave.filter.all_types": "All types"
+  "leave.filter.all_types": "All types",
+  "employee_nav.schedule": "Графік",
+  "employee_schedule.week_of": "Тиждень {{date}}",
+  "employee_schedule.today": "Сьогодні",
+  "employee_schedule.on_leave": "У відпустці",
+  "employee_schedule.reported_sick": "Повідомлено про хворобу",
+  "employee_schedule.reported_late": "Повідомлено про запізнення на {{minutes}} хв",
+  "employee_schedule.day_off": "Вихідний день"
 }

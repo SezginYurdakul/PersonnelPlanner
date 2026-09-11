@@ -12,6 +12,7 @@ import { LeaveRequestsPage } from './pages/LeaveRequestsPage';
 import { WeeklySchedulePage } from './pages/WeeklySchedulePage';
 import { TimeAttendanceImportPage } from './pages/TimeAttendanceImportPage';
 import { CompanySettingsPage } from './pages/CompanySettingsPage';
+import { EmployeeSchedulePage } from './pages/EmployeeSchedulePage';
 import { ProtectedRoute } from './components/layout/ProtectedRoute';
 
 export function App() {
@@ -22,7 +23,7 @@ export function App() {
         <Route
           path="/"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute adminOnly>
               <DashboardPage />
             </ProtectedRoute>
           }
@@ -30,7 +31,7 @@ export function App() {
         <Route
           path="/staff"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute adminOnly>
               <StaffPage />
             </ProtectedRoute>
           }
@@ -38,7 +39,7 @@ export function App() {
         <Route
           path="/staff/:id"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute adminOnly>
               <EmployeeDetailPage />
             </ProtectedRoute>
           }
@@ -46,7 +47,7 @@ export function App() {
         <Route
           path="/agencies"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute adminOnly>
               <AgenciesPage />
             </ProtectedRoute>
           }
@@ -54,7 +55,7 @@ export function App() {
         <Route
           path="/lines"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute adminOnly>
               <LinesPage />
             </ProtectedRoute>
           }
@@ -62,7 +63,7 @@ export function App() {
         <Route
           path="/roles"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute adminOnly>
               <RolesPage />
             </ProtectedRoute>
           }
@@ -70,7 +71,7 @@ export function App() {
         <Route
           path="/shift-patterns"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute adminOnly>
               <ShiftPatternsPage />
             </ProtectedRoute>
           }
@@ -78,7 +79,7 @@ export function App() {
         <Route
           path="/pay-rate-surcharge-rules"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute adminOnly>
               <PayRateSurchargeRulesPage />
             </ProtectedRoute>
           }
@@ -86,7 +87,7 @@ export function App() {
         <Route
           path="/leave-requests"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute adminOnly>
               <LeaveRequestsPage />
             </ProtectedRoute>
           }
@@ -94,7 +95,7 @@ export function App() {
         <Route
           path="/schedule"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute adminOnly>
               <WeeklySchedulePage />
             </ProtectedRoute>
           }
@@ -102,7 +103,7 @@ export function App() {
         <Route
           path="/time-attendance"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute adminOnly>
               <TimeAttendanceImportPage />
             </ProtectedRoute>
           }
@@ -110,8 +111,16 @@ export function App() {
         <Route
           path="/company-settings"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute adminOnly>
               <CompanySettingsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/me/schedule"
+          element={
+            <ProtectedRoute>
+              <EmployeeSchedulePage />
             </ProtectedRoute>
           }
         />

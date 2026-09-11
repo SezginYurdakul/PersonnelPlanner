@@ -154,5 +154,12 @@
   "leave.reject": "Reject",
   "leave.empty": "No leave requests yet.",
   "leave.filter.all_statuses": "All statuses",
-  "leave.filter.all_types": "All types"
+  "leave.filter.all_types": "All types",
+  "employee_nav.schedule": "Schedule",
+  "employee_schedule.week_of": "Week of {{date}}",
+  "employee_schedule.today": "Today",
+  "employee_schedule.on_leave": "On leave",
+  "employee_schedule.reported_sick": "Reported sick",
+  "employee_schedule.reported_late": "Reported {{minutes}} min late",
+  "employee_schedule.day_off": "Day off"
 }

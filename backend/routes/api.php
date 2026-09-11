@@ -12,6 +12,7 @@ use App\Modules\Lines\Http\Controllers\PayRateSurchargeRuleController;
 use App\Modules\Lines\Http\Controllers\SchedulingRoleController;
 use App\Modules\Lines\Http\Controllers\ShiftPatternController;
 use App\Modules\Scheduling\Http\Controllers\AlternativeCandidateController;
+use App\Modules\Scheduling\Http\Controllers\EmployeeScheduleController;
 use App\Modules\Scheduling\Http\Controllers\ScheduleController;
 use App\Modules\Scheduling\Http\Controllers\ScheduleSuggestionController;
 use App\Modules\Scheduling\Http\Controllers\ShiftAssignmentController;
@@ -35,6 +36,7 @@ Route::prefix('v1')->group(function () {
         // authorization happens inside each controller (resolving the Employee for the
         // authenticated User, 403 if none linked), not via route middleware.
         Route::prefix('me')->group(function () {
+            Route::get('/schedule', [EmployeeScheduleController::class, 'show']);
             Route::get('/company-settings', [CompanySettingsController::class, 'showForEmployee']);
             Route::get('/leave-requests', [SelfServiceLeaveRequestController::class, 'index']);
             Route::post('/leave-requests', [SelfServiceLeaveRequestController::class, 'store']);

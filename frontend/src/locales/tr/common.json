@@ -154,5 +154,12 @@
   "leave.reject": "Reject",
   "leave.empty": "No leave requests yet.",
   "leave.filter.all_statuses": "All statuses",
-  "leave.filter.all_types": "All types"
+  "leave.filter.all_types": "All types",
+  "employee_nav.schedule": "Program",
+  "employee_schedule.week_of": "{{date}} haftası",
+  "employee_schedule.today": "Bugün",
+  "employee_schedule.on_leave": "İzinli",
+  "employee_schedule.reported_sick": "Hastalık bildirildi",
+  "employee_schedule.reported_late": "{{minutes}} dk geç bildirildi",
+  "employee_schedule.day_off": "İzin günü"
 }

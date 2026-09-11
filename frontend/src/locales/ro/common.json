@@ -154,5 +154,12 @@
   "leave.reject": "Reject",
   "leave.empty": "No leave requests yet.",
   "leave.filter.all_statuses": "All statuses",
-  "leave.filter.all_types": "All types"
+  "leave.filter.all_types": "All types",
+  "employee_nav.schedule": "Program",
+  "employee_schedule.week_of": "Săptămâna {{date}}",
+  "employee_schedule.today": "Azi",
+  "employee_schedule.on_leave": "În concediu",
+  "employee_schedule.reported_sick": "Concediu medical raportat",
+  "employee_schedule.reported_late": "Întârziere raportată de {{minutes}} min",
+  "employee_schedule.day_off": "Zi liberă"
 }

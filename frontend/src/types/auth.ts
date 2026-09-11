@@ -9,6 +9,11 @@ export interface AuthUser {
   locale: Locale;
   visibility_scope: VisibilityScope;
   roles: string[];
+  employee: {
+    id: number;
+    first_name: string;
+    last_name: string;
+  } | null;
 }
 
 export interface LoginPayload {

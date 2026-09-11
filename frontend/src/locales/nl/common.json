@@ -154,5 +154,12 @@
   "leave.reject": "Reject",
   "leave.empty": "No leave requests yet.",
   "leave.filter.all_statuses": "All statuses",
-  "leave.filter.all_types": "All types"
+  "leave.filter.all_types": "All types",
+  "employee_nav.schedule": "Rooster",
+  "employee_schedule.week_of": "Week van {{date}}",
+  "employee_schedule.today": "Vandaag",
+  "employee_schedule.on_leave": "Met verlof",
+  "employee_schedule.reported_sick": "Ziek gemeld",
+  "employee_schedule.reported_late": "{{minutes}} min te laat gemeld",
+  "employee_schedule.day_off": "Vrije dag"
 }
