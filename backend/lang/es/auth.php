@@ -18,5 +18,7 @@ return [
     'throttle' => 'Too many login attempts. Please try again in :seconds seconds.',
     'inactive' => 'This account has been deactivated.',
     'logged_out' => 'Logged out successfully.',
+    'invalid_invitation' => 'This invitation link is invalid or has already been used.',
+    'invitation_completed' => 'Your password has been set. An admin will activate your account shortly.',
 
 ];

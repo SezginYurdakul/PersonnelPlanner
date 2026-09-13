@@ -12,6 +12,7 @@ import { LeaveRequestsPage } from './pages/LeaveRequestsPage';
 import { WeeklySchedulePage } from './pages/WeeklySchedulePage';
 import { TimeAttendanceImportPage } from './pages/TimeAttendanceImportPage';
 import { CompanySettingsPage } from './pages/CompanySettingsPage';
+import { CompletePasswordPage } from './pages/CompletePasswordPage';
 import { EmployeeSchedulePage } from './pages/EmployeeSchedulePage';
 import { LeaveRequestPage } from './pages/LeaveRequestPage';
 import { ShiftNoticePage } from './pages/ShiftNoticePage';
@@ -22,6 +23,7 @@ export function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/complete-invitation" element={<CompletePasswordPage />} />
         <Route
           path="/"
           element={

@@ -2,10 +2,11 @@
 
 namespace App\Modules\Auth\Http\Resources;
 
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/** @mixin \App\Models\User */
+/** @mixin User */
 class AuthUserResource extends JsonResource
 {
     /**
@@ -19,6 +20,10 @@ class AuthUserResource extends JsonResource
             'email' => $this->email,
             'locale' => $this->locale,
             'visibility_scope' => $this->visibility_scope,
+            'is_active' => $this->is_active,
+            'invited_at' => $this->invited_at?->toIso8601String(),
+            'activated_at' => $this->activated_at?->toIso8601String(),
+            'invitation_pending' => $this->invitation_token !== null,
             'roles' => $this->getRoleNames(),
             'employee' => $this->whenLoaded('employee', fn () => $this->employee ? [
                 'id' => $this->employee->id,

@@ -27,6 +27,10 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')->group(function () {
     Route::post('/auth/login', [AuthController::class, 'login']);
 
+    // Public, token-only (ProjectPlan.md §8g) - the invited person hasn't authenticated
+    // yet, this request *is* the identity check.
+    Route::post('/auth/complete-invitation', [AuthController::class, 'completeInvitation']);
+
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/auth/logout', [AuthController::class, 'logout']);
         Route::get('/auth/me', [AuthController::class, 'me']);
@@ -52,6 +56,8 @@ Route::prefix('v1')->group(function () {
 
             Route::get('/users', [UserController::class, 'index']);
             Route::put('/users/{user}/visibility-scope', [UserController::class, 'updateVisibilityScope']);
+            Route::post('/users/invite', [AuthController::class, 'invite']);
+            Route::post('/users/{user}/activate', [AuthController::class, 'activate']);
 
             Route::apiResource('agencies', AgencyController::class);
 

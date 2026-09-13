@@ -6,9 +6,54 @@ import { AppLayout } from '../components/layout/AppLayout';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { activateUser, fetchPendingActivationUsers } from '../features/auth/api';
 import { EmployeeFormModal } from '../features/staff/EmployeeFormModal';
 import { createEmployee, fetchEmployees, type EmployeeFilters } from '../features/staff/api';
 import type { EmployeeFormValues } from '../types/staff';
+
+function PendingActivationSection() {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+
+  const { data: pendingUsers } = useQuery({
+    queryKey: ['pending-activation-users'],
+    queryFn: fetchPendingActivationUsers,
+  });
+
+  const activateMutation = useMutation({
+    mutationFn: (userId: number) => activateUser(userId),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['pending-activation-users'] }),
+  });
+
+  if (!pendingUsers || pendingUsers.length === 0) {
+    return null;
+  }
+
+  return (
+    <Card className="mb-4 p-0">
+      <h2 className="border-b border-slate-100 px-6 py-3 text-sm font-semibold text-slate-700">
+        {t('staff.pending_activation')}
+      </h2>
+      <ul>
+        {pendingUsers.map((user) => (
+          <li key={user.id} className="flex items-center justify-between border-b border-slate-100 px-6 py-3 last:border-0">
+            <div>
+              <p className="text-sm font-medium text-slate-900">{user.name}</p>
+              <p className="text-xs text-slate-500">{user.email}</p>
+            </div>
+            <Button
+              variant="secondary"
+              disabled={activateMutation.isPending}
+              onClick={() => activateMutation.mutate(user.id)}
+            >
+              {t('staff.activate_account')}
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
 
 export function StaffPage() {
   const { t } = useTranslation();
@@ -32,6 +77,8 @@ export function StaffPage() {
         <h1 className="text-xl font-semibold text-slate-900">{t('staff.title')}</h1>
         <Button onClick={() => setIsCreating(true)}>{t('staff.new')}</Button>
       </div>
+
+      <PendingActivationSection />
 
       <div className="mb-4 flex gap-3">
         <select

@@ -23,6 +23,15 @@ class UserController extends Controller
             $query->doesntHave('employee');
         }
 
+        // Completed the set-password step but not yet approved by an admin
+        // (ProjectPlan.md §8g's two-step activation) - powers the Staff page's
+        // "pending activation" section.
+        if ($request->boolean('pending_activation')) {
+            $query->where('is_active', false)
+                ->whereNull('invitation_token')
+                ->whereNotNull('invited_at');
+        }
+
         if ($search = $request->string('search')->toString()) {
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")

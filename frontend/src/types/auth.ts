@@ -8,6 +8,10 @@ export interface AuthUser {
   email: string;
   locale: Locale;
   visibility_scope: VisibilityScope;
+  is_active: boolean;
+  invited_at: string | null;
+  activated_at: string | null;
+  invitation_pending: boolean;
   roles: string[];
   employee: {
     id: number;
