@@ -2,10 +2,11 @@
 
 namespace App\Modules\Staff\Http\Resources;
 
+use App\Modules\Staff\Models\Employee;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/** @mixin \App\Modules\Staff\Models\Employee */
+/** @mixin Employee */
 class EmployeeResource extends JsonResource
 {
     /**
@@ -30,6 +31,10 @@ class EmployeeResource extends JsonResource
             'qualified_role_ids' => $this->whenLoaded('schedulingRoles', fn () => $this->schedulingRoles->pluck('id')),
             'has_account' => $this->hasLinkedAccount(),
             'user_id' => $this->user_id,
+            // Whether the linked User's account is activated (ProjectPlan.md §8g's
+            // two-step invite/activate flow) - distinct from `is_active` below, which is
+            // this Employee's own employment status and unrelated to login access.
+            'account_active' => $this->hasLinkedAccount() ? (bool) $this->user?->is_active : null,
             'is_active' => $this->is_active,
         ];
     }

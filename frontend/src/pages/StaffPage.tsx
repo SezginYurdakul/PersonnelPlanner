@@ -22,7 +22,10 @@ function PendingActivationSection() {
 
   const activateMutation = useMutation({
     mutationFn: (userId: number) => activateUser(userId),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['pending-activation-users'] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['pending-activation-users'] });
+      void queryClient.invalidateQueries({ queryKey: ['employees'] });
+    },
   });
 
   if (!pendingUsers || pendingUsers.length === 0) {
@@ -135,9 +138,13 @@ export function StaffPage() {
                   </td>
                   <td className="px-6 py-3 text-slate-600">{employee.agency?.name ?? '—'}</td>
                   <td className="px-6 py-3">
-                    <Badge tone={employee.has_account ? 'success' : 'warning'}>
-                      {employee.has_account ? t('staff.has_account') : t('staff.no_account')}
-                    </Badge>
+                    {!employee.has_account ? (
+                      <Badge tone="warning">{t('staff.no_account')}</Badge>
+                    ) : employee.account_active ? (
+                      <Badge tone="success">{t('staff.has_account')}</Badge>
+                    ) : (
+                      <Badge tone="warning">{t('staff.awaiting_activation')}</Badge>
+                    )}
                   </td>
                   <td className="px-6 py-3">
                     <Badge tone={employee.is_active ? 'success' : 'neutral'}>

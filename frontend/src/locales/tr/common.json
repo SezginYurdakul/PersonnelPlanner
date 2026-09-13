@@ -205,5 +205,6 @@
   "complete_invitation.invalid_token": "Bu davet bağlantısı geçersiz veya daha önce kullanılmış.",
   "complete_invitation.install_hint": "Programın değiştiği anda haberdar olmak için bu uygulamayı telefonuna yükle.",
   "complete_invitation.install_android": "Ana Ekrana Ekle",
-  "complete_invitation.install_ios": "iPhone/iPad'de: Paylaş simgesine dokun, ardından \"Ana Ekrana Ekle\"yi seç."
+  "complete_invitation.install_ios": "iPhone/iPad'de: Paylaş simgesine dokun, ardından \"Ana Ekrana Ekle\"yi seç.",
+  "staff.awaiting_activation": "Aktivasyon bekliyor"
 }

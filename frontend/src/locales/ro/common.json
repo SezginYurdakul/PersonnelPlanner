@@ -205,5 +205,6 @@
   "complete_invitation.invalid_token": "Acest link de invitație este invalid sau a fost deja folosit.",
   "complete_invitation.install_hint": "Instalează această aplicație pe telefon pentru a fi notificat imediat ce programul tău se schimbă.",
   "complete_invitation.install_android": "Adaugă pe ecranul principal",
-  "complete_invitation.install_ios": "Pe iPhone/iPad: atinge pictograma Distribuie, apoi \"Adaugă pe ecranul principal\"."
+  "complete_invitation.install_ios": "Pe iPhone/iPad: atinge pictograma Distribuie, apoi \"Adaugă pe ecranul principal\".",
+  "staff.awaiting_activation": "În așteptarea activării"
 }

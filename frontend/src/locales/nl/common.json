@@ -205,5 +205,6 @@
   "complete_invitation.invalid_token": "Deze uitnodigingslink is ongeldig of al gebruikt.",
   "complete_invitation.install_hint": "Installeer deze app op je telefoon om direct een melding te krijgen zodra je rooster verandert.",
   "complete_invitation.install_android": "Toevoegen aan startscherm",
-  "complete_invitation.install_ios": "Op iPhone/iPad: tik op het Deel-icoon, kies dan \"Zet op beginscherm\"."
+  "complete_invitation.install_ios": "Op iPhone/iPad: tik op het Deel-icoon, kies dan \"Zet op beginscherm\".",
+  "staff.awaiting_activation": "Wacht op activatie"
 }

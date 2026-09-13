@@ -205,5 +205,6 @@
   "complete_invitation.invalid_token": "This invitation link is invalid or has already been used.",
   "complete_invitation.install_hint": "Install this app on your phone to get notified the moment your schedule changes.",
   "complete_invitation.install_android": "Add to Home Screen",
-  "complete_invitation.install_ios": "On iPhone/iPad: tap the Share icon, then \"Add to Home Screen\"."
+  "complete_invitation.install_ios": "On iPhone/iPad: tap the Share icon, then \"Add to Home Screen\".",
+  "staff.awaiting_activation": "Awaiting activation"
 }

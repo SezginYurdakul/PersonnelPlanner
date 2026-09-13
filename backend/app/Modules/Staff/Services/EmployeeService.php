@@ -19,7 +19,7 @@ final class EmployeeService implements EmployeeServiceContract
      */
     public function list(array $filters): LengthAwarePaginator
     {
-        $query = Employee::query()->with(['agency', 'currentEmploymentTerm']);
+        $query = Employee::query()->with(['agency', 'currentEmploymentTerm', 'user']);
 
         if (isset($filters['employee_type'])) {
             $query->where('employee_type', $filters['employee_type']);

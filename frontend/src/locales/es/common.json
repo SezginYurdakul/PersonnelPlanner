@@ -205,5 +205,6 @@
   "complete_invitation.invalid_token": "Este enlace de invitación no es válido o ya ha sido utilizado.",
   "complete_invitation.install_hint": "Instala esta aplicación en tu teléfono para recibir un aviso en cuanto cambie tu horario.",
   "complete_invitation.install_android": "Añadir a la pantalla de inicio",
-  "complete_invitation.install_ios": "En iPhone/iPad: toca el icono de Compartir y luego \"Añadir a pantalla de inicio\"."
+  "complete_invitation.install_ios": "En iPhone/iPad: toca el icono de Compartir y luego \"Añadir a pantalla de inicio\".",
+  "staff.awaiting_activation": "Pendiente de activación"
 }

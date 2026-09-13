@@ -205,5 +205,6 @@
   "complete_invitation.invalid_token": "Це посилання-запрошення недійсне або вже використане.",
   "complete_invitation.install_hint": "Встановіть цей застосунок на телефон, щоб отримувати сповіщення одразу, коли ваш графік зміниться.",
   "complete_invitation.install_android": "Додати на головний екран",
-  "complete_invitation.install_ios": "На iPhone/iPad: торкніться значка \"Поділитися\", потім \"На екран Домівка\"."
+  "complete_invitation.install_ios": "На iPhone/iPad: торкніться значка \"Поділитися\", потім \"На екран Домівка\".",
+  "staff.awaiting_activation": "Очікує активації"
 }

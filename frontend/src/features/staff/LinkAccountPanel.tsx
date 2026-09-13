@@ -56,7 +56,9 @@ export function LinkAccountPanel({ employee }: { employee: Employee }) {
 
       {employee.has_account ? (
         <div className="flex items-center justify-between">
-          <Badge tone="success">{t('staff.has_account')}</Badge>
+          <Badge tone={employee.account_active ? 'success' : 'warning'}>
+            {employee.account_active ? t('staff.has_account') : t('staff.awaiting_activation')}
+          </Badge>
           <Button variant="secondary" onClick={() => unlinkMutation.mutate()}>
             {t('common.unlink')}
           </Button>

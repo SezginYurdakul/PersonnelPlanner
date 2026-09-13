@@ -34,6 +34,7 @@ export interface Employee {
   qualified_role_ids: number[];
   has_account: boolean;
   user_id: number | null;
+  account_active: boolean | null;
   is_active: boolean;
 }
 
