@@ -3,6 +3,7 @@
 namespace App\Modules\Scheduling\Services;
 
 use App\Modules\Lines\Models\SchedulingRole;
+use App\Modules\Notifications\Services\NotificationDispatchService;
 use App\Modules\Scheduling\Contracts\ShiftAssignmentServiceContract;
 use App\Modules\Scheduling\DTOs\MoveAssignmentData;
 use App\Modules\Scheduling\DTOs\ShiftAssignmentData;
@@ -10,6 +11,7 @@ use App\Modules\Scheduling\Models\Schedule;
 use App\Modules\Scheduling\Models\ShiftAssignment;
 use App\Modules\Scheduling\RuleEngine\DTOs\EmployeeScheduleContext;
 use App\Modules\Scheduling\RuleEngine\RuleEngine;
+use App\Modules\Scheduling\RuleEngine\ValueObjects\RuleResult;
 use App\Modules\Staff\Models\Employee;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -22,9 +24,10 @@ use Illuminate\Validation\ValidationException;
  */
 final class ShiftAssignmentService implements ShiftAssignmentServiceContract
 {
-    public function __construct(private readonly RuleEngine $ruleEngine)
-    {
-    }
+    public function __construct(
+        private readonly RuleEngine $ruleEngine,
+        private readonly NotificationDispatchService $notifications,
+    ) {}
 
     public function create(Schedule $schedule, ShiftAssignmentData $data): array
     {
@@ -47,6 +50,8 @@ final class ShiftAssignmentService implements ShiftAssignmentServiceContract
             ...$data->toArray(),
             'schedule_id' => $schedule->id,
         ]);
+
+        $this->notifications->notifyAssignmentChanged($assignment);
 
         return $this->withRuleResults($assignment->refresh());
     }
@@ -72,6 +77,7 @@ final class ShiftAssignmentService implements ShiftAssignmentServiceContract
         }
 
         $assignment->update($data->toArray());
+        $this->notifications->notifyAssignmentChanged($assignment);
 
         return $this->withRuleResults($assignment->refresh());
     }
@@ -107,17 +113,22 @@ final class ShiftAssignmentService implements ShiftAssignmentServiceContract
             'work_date' => $data->workDate,
             'source' => ShiftAssignment::SOURCE_MANUAL,
         ]);
+        $this->notifications->notifyAssignmentChanged($assignment);
 
         return $this->withRuleResults($assignment->refresh());
     }
 
     public function delete(ShiftAssignment $assignment): void
     {
+        // Capture employee/approved-state before the row is removed - both are gone from
+        // the model afterward (ProjectPlan.md §8h's dispatch-hook note on delete()).
+        $this->notifications->notifyAssignmentChanged($assignment);
+
         $assignment->delete();
     }
 
     /**
-     * @return array{assignment: ShiftAssignment, rule_results: Collection<int, \App\Modules\Scheduling\RuleEngine\ValueObjects\RuleResult>}
+     * @return array{assignment: ShiftAssignment, rule_results: Collection<int, RuleResult>}
      */
     private function withRuleResults(ShiftAssignment $assignment): array
     {

@@ -3,6 +3,7 @@
 namespace App\Modules\Scheduling\Services;
 
 use App\Models\User;
+use App\Modules\Notifications\Services\NotificationDispatchService;
 use App\Modules\Scheduling\Contracts\ScheduleServiceContract;
 use App\Modules\Scheduling\DTOs\ScheduleData;
 use App\Modules\Scheduling\Exceptions\ScheduleCannotBeApprovedException;
@@ -12,9 +13,10 @@ use Illuminate\Validation\ValidationException;
 
 final class ScheduleService implements ScheduleServiceContract
 {
-    public function __construct(private readonly MandatoryCoverageChecker $coverageChecker)
-    {
-    }
+    public function __construct(
+        private readonly MandatoryCoverageChecker $coverageChecker,
+        private readonly NotificationDispatchService $notifications,
+    ) {}
 
     public function list(): Collection
     {
@@ -39,8 +41,8 @@ final class ScheduleService implements ScheduleServiceContract
 
     /**
      * @throws ScheduleCannotBeApprovedException if a requires_coverage station within this
-     *   schedule's generated scope has an unresolved unfilled slot (ProjectPlan.md §12.3b -
-     *   the one hard block in this system, unlike every other rule violation).
+     *                                           schedule's generated scope has an unresolved unfilled slot (ProjectPlan.md §12.3b -
+     *                                           the one hard block in this system, unlike every other rule violation).
      */
     public function approve(Schedule $schedule, User $approver): Schedule
     {
@@ -56,9 +58,7 @@ final class ScheduleService implements ScheduleServiceContract
             'approved_at' => now(),
         ]);
 
-        // Notification hook (ProjectPlan.md §12.4, implemented in Phase 8): a
-        // ScheduleApproved event/notification dispatch belongs here once the employee
-        // PWA + push notification module exists.
+        $this->notifications->notifyScheduleApproved($schedule);
 
         return $schedule->refresh();
     }

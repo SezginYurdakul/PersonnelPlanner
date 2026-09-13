@@ -206,5 +206,8 @@
   "complete_invitation.install_hint": "Install this app on your phone to get notified the moment your schedule changes.",
   "complete_invitation.install_android": "Add to Home Screen",
   "complete_invitation.install_ios": "On iPhone/iPad: tap the Share icon, then \"Add to Home Screen\".",
-  "staff.awaiting_activation": "Awaiting activation"
+  "staff.awaiting_activation": "Awaiting activation",
+  "notifications.permission_prompt": "Get notified the moment your schedule changes - enable notifications for this app?",
+  "notifications.enable": "Enable notifications",
+  "notifications.not_now": "Not now"
 }

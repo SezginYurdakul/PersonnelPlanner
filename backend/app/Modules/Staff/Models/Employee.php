@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Modules\Leave\Models\LeaveRequest;
 use App\Modules\Lines\Models\Line;
 use App\Modules\Lines\Models\SchedulingRole;
+use App\Modules\Notifications\Models\PushSubscription;
 use App\Modules\TimeAttendance\Models\TimeClockEntry;
 use Database\Factories\EmployeeFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -16,6 +17,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Notifications\Notifiable;
 
 #[Fillable([
     'user_id',
@@ -35,7 +37,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class Employee extends Model
 {
     /** @use HasFactory<EmployeeFactory> */
-    use HasFactory, SoftDeletes;
+    use HasFactory, Notifiable, SoftDeletes;
 
     protected function casts(): array
     {
@@ -119,5 +121,24 @@ class Employee extends Model
     public function timeClockEntries(): HasMany
     {
         return $this->hasMany(TimeClockEntry::class);
+    }
+
+    /**
+     * @return HasMany<PushSubscription, $this>
+     */
+    public function pushSubscriptions(): HasMany
+    {
+        return $this->hasMany(PushSubscription::class);
+    }
+
+    /**
+     * Email must reach this Employee's own address (ProjectPlan.md §20) regardless of
+     * whether a linked User/login exists at all - unlike User, Employee has no `email`
+     * column override needed since Notifiable's default already reads `->email`, but this
+     * makes the routing explicit and independent of any User relationship.
+     */
+    public function routeNotificationForMail(): ?string
+    {
+        return $this->email;
     }
 }

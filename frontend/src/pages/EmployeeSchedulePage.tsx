@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { EmployeeAppLayout } from '../components/layout/EmployeeAppLayout';
 import { fetchMySchedule } from '../features/employee-schedule/api';
+import { NotificationPermissionPrompt } from '../features/notifications/NotificationPermissionPrompt';
 import type { EmployeeScheduleAssignment } from '../types/employee-schedule';
 
 function currentMonday(): string {
@@ -48,6 +49,8 @@ export function EmployeeSchedulePage() {
 
   return (
     <EmployeeAppLayout>
+      <NotificationPermissionPrompt />
+
       <div className="mb-4 flex items-center justify-between">
         <button
           type="button"

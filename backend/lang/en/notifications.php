@@ -8,4 +8,10 @@ return [
         'action' => 'Set your password',
     ],
 
+    'schedule_changed' => [
+        'subject' => 'Your schedule has changed',
+        'line' => 'Your schedule for the week of :week has been updated.',
+        'action' => 'View your schedule',
+    ],
+
 ];

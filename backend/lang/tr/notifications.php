@@ -8,4 +8,10 @@ return [
         'action' => 'Şifreni belirle',
     ],
 
+    'schedule_changed' => [
+        'subject' => 'Programınız değişti',
+        'line' => ':week haftasına ait programınız güncellendi.',
+        'action' => 'Programını görüntüle',
+    ],
+
 ];

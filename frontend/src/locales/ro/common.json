@@ -206,5 +206,8 @@
   "complete_invitation.install_hint": "Instalează această aplicație pe telefon pentru a fi notificat imediat ce programul tău se schimbă.",
   "complete_invitation.install_android": "Adaugă pe ecranul principal",
   "complete_invitation.install_ios": "Pe iPhone/iPad: atinge pictograma Distribuie, apoi \"Adaugă pe ecranul principal\".",
-  "staff.awaiting_activation": "În așteptarea activării"
+  "staff.awaiting_activation": "În așteptarea activării",
+  "notifications.permission_prompt": "Fii anunțat imediat ce programul tău se schimbă - activăm notificările pentru această aplicație?",
+  "notifications.enable": "Activează notificările",
+  "notifications.not_now": "Nu acum"
 }

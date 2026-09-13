@@ -8,4 +8,10 @@ return [
         'action' => 'Wachtwoord instellen',
     ],
 
+    'schedule_changed' => [
+        'subject' => 'Je rooster is gewijzigd',
+        'line' => 'Je rooster voor de week van :week is bijgewerkt.',
+        'action' => 'Bekijk je rooster',
+    ],
+
 ];

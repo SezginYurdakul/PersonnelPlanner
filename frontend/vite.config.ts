@@ -21,6 +21,13 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html}'],
       },
       registerType: 'prompt',
+      devOptions: {
+        // Registers the service worker under `vite dev` too, not just production builds -
+        // otherwise push subscription (navigator.serviceWorker.ready) can never resolve
+        // while developing/testing locally.
+        enabled: true,
+        type: 'module',
+      },
       manifest: {
         name: 'Bakkerij X',
         short_name: 'Bakkerij X',

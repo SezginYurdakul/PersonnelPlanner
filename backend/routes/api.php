@@ -8,6 +8,7 @@ use App\Modules\Leave\Http\Controllers\LeaveRequestController;
 use App\Modules\Leave\Http\Controllers\LeaveTypeController;
 use App\Modules\Leave\Http\Controllers\SelfServiceLeaveRequestController;
 use App\Modules\Lines\Http\Controllers\LineController;
+use App\Modules\Notifications\Http\Controllers\PushSubscriptionController;
 use App\Modules\Lines\Http\Controllers\PayRateSurchargeRuleController;
 use App\Modules\Lines\Http\Controllers\SchedulingRoleController;
 use App\Modules\Lines\Http\Controllers\ShiftPatternController;
@@ -46,6 +47,9 @@ Route::prefix('v1')->group(function () {
             Route::post('/leave-requests', [SelfServiceLeaveRequestController::class, 'store']);
             Route::get('/shift-notices/eligibility', [SelfServiceShiftNoticeController::class, 'eligibility']);
             Route::post('/shift-notices', [SelfServiceShiftNoticeController::class, 'store']);
+
+            Route::post('/push-subscriptions', [PushSubscriptionController::class, 'store']);
+            Route::delete('/push-subscriptions/{pushSubscription}', [PushSubscriptionController::class, 'destroy']);
         });
 
         Route::middleware('role:admin')->group(function () {

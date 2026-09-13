@@ -8,4 +8,10 @@ return [
         'action' => 'Setează parola',
     ],
 
+    'schedule_changed' => [
+        'subject' => 'Programul tău s-a schimbat',
+        'line' => 'Programul tău pentru săptămâna :week a fost actualizat.',
+        'action' => 'Vezi programul',
+    ],
+
 ];

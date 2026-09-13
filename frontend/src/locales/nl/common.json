@@ -206,5 +206,8 @@
   "complete_invitation.install_hint": "Installeer deze app op je telefoon om direct een melding te krijgen zodra je rooster verandert.",
   "complete_invitation.install_android": "Toevoegen aan startscherm",
   "complete_invitation.install_ios": "Op iPhone/iPad: tik op het Deel-icoon, kies dan \"Zet op beginscherm\".",
-  "staff.awaiting_activation": "Wacht op activatie"
+  "staff.awaiting_activation": "Wacht op activatie",
+  "notifications.permission_prompt": "Word direct op de hoogte gebracht als je rooster verandert - meldingen inschakelen voor deze app?",
+  "notifications.enable": "Meldingen inschakelen",
+  "notifications.not_now": "Niet nu"
 }

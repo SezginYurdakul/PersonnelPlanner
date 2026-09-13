@@ -206,5 +206,8 @@
   "complete_invitation.install_hint": "Встановіть цей застосунок на телефон, щоб отримувати сповіщення одразу, коли ваш графік зміниться.",
   "complete_invitation.install_android": "Додати на головний екран",
   "complete_invitation.install_ios": "На iPhone/iPad: торкніться значка \"Поділитися\", потім \"На екран Домівка\".",
-  "staff.awaiting_activation": "Очікує активації"
+  "staff.awaiting_activation": "Очікує активації",
+  "notifications.permission_prompt": "Дізнавайтеся одразу, коли ваш графік зміниться - увімкнути сповіщення для цього застосунку?",
+  "notifications.enable": "Увімкнути сповіщення",
+  "notifications.not_now": "Не зараз"
 }
