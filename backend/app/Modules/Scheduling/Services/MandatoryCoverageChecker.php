@@ -35,7 +35,7 @@ final class MandatoryCoverageChecker
         }
 
         $lineIds = $scope['line_ids'] ?? [];
-        $shiftPatternIds = $scope['shift_pattern_ids'] ?? [];
+        $slotTypes = $scope['slot_types'] ?? [];
         $roleIds = $scope['role_ids'] ?? null;
 
         $mandatoryStations = SchedulingRole::query()
@@ -43,22 +43,34 @@ final class MandatoryCoverageChecker
             ->where('requires_coverage', true)
             ->when($lineIds !== [], fn ($q) => $q->whereIn('line_id', $lineIds))
             ->when($roleIds !== null, fn ($q) => $q->whereIn('id', $roleIds))
+            ->with('line')
             ->get();
 
         if ($mandatoryStations->isEmpty()) {
             return collect();
         }
 
-        $shiftPatterns = ShiftPattern::query()->whereIn('id', $shiftPatternIds)->get();
+        // Keyed by "lineId|slotType" - the same resolution ScheduleSuggestionService uses,
+        // since a mandatory station's line determines which concrete pattern row (and
+        // therefore hours) applies (ProjectPlan.md: hours vary by the line's
+        // shift_pattern_group, the slot type name does not).
+        $shiftPatternsByLineAndSlot = ShiftPattern::query()
+            ->whereIn('shift_pattern_group_id', $mandatoryStations->pluck('line.shift_pattern_group_id')->filter()->unique())
+            ->whereIn('slot_type', $slotTypes)
+            ->get()
+            ->groupBy('shift_pattern_group_id');
+
         $days = $this->weekDays($schedule->week_start_date);
 
         $blocking = collect();
 
         foreach ($mandatoryStations as $role) {
             $line = $role->line;
+            $groupId = $line?->shift_pattern_group_id;
+            $patternsForLine = $groupId !== null ? $shiftPatternsByLineAndSlot->get($groupId, collect()) : collect();
 
             foreach ($days as $day) {
-                foreach ($shiftPatterns as $shiftPattern) {
+                foreach ($patternsForLine as $shiftPattern) {
                     $hasAssignment = ShiftAssignment::query()
                         ->where('schedule_id', $schedule->id)
                         ->where('role_id', $role->id)

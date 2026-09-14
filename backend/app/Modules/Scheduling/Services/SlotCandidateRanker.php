@@ -22,16 +22,10 @@ use Illuminate\Support\Collection;
  */
 final class SlotCandidateRanker
 {
-    /** Average weeks per month, used only to rank monthly-salary employees by an
-     *  effective hourly cost for `cost` mode (ProjectPlan.md §11.2 - "for ranking
-     *  purposes only, not a payroll calculation"). */
-    private const WEEKS_PER_MONTH = 52 / 12;
-
     public function __construct(
         private readonly RuleEngine $ruleEngine,
         private readonly PayRateSurchargeRuleServiceContract $payRateSurchargeRuleService,
-    ) {
-    }
+    ) {}
 
     /**
      * Ranks a pre-built candidate pool for a station slot (used internally during
@@ -40,12 +34,12 @@ final class SlotCandidateRanker
      *
      * @param  Collection<int, Employee>  $pool
      * @param  Collection<int, float>  $fairScoresByEmployeeId  running hours-so-far tally,
-     *   keyed by employee id, maintained by the caller across a whole generation pass.
+     *                                                          keyed by employee id, maintained by the caller across a whole generation pass.
      * @param  Collection<int, int>  $homeShiftPatternsByEmployeeId  each employee's first-
-     *   assigned shift_pattern_id this generation run (soft shift-consistency preference).
+     *                                                               assigned shift_pattern_id this generation run (soft shift-consistency preference).
      * @param  Collection<int, Collection<int, Carbon>>  $restDaysByEmployeeId  each
-     *   employee's rest days so far this generation run (soft consecutive-rest-day
-     *   preference).
+     *                                                                          employee's rest days so far this generation run (soft consecutive-rest-day
+     *                                                                          preference).
      * @return Collection<int, CandidateData>
      */
     public function rankPool(
@@ -112,17 +106,13 @@ final class SlotCandidateRanker
 
     /**
      * Monthly salary -> effective hourly cost, for ranking purposes only (ProjectPlan.md
-     * §11.2). Agency/hourly employees use their stored hourly_rate directly.
+     * §11.2). Agency/hourly employees use their stored hourly_rate directly. Delegates to
+     * Employee::effectiveHourlyRate() - the same conversion the reporting module's cost
+     * breakdown uses (§14.2), kept in one place.
      */
     public function resolveBaseHourlyRate(Employee $employee): float
     {
-        if ($employee->pay_type === 'monthly') {
-            $monthlyHours = (float) $employee->contracted_hours_per_week * self::WEEKS_PER_MONTH;
-
-            return $monthlyHours > 0 ? (float) $employee->monthly_salary / $monthlyHours : 0.0;
-        }
-
-        return (float) $employee->hourly_rate;
+        return $employee->effectiveHourlyRate();
     }
 
     /**

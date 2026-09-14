@@ -6,7 +6,7 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { LineFormModal } from '../features/lines/LineFormModal';
-import { createLine, fetchLines, updateLine } from '../features/lines/api';
+import { createLine, fetchLines, fetchShiftPatternGroups, updateLine } from '../features/lines/api';
 import type { Line, LineFormValues } from '../types/lines';
 
 export function LinesPage() {
@@ -16,6 +16,12 @@ export function LinesPage() {
   const [isCreating, setIsCreating] = useState(false);
 
   const { data: lines, isLoading } = useQuery({ queryKey: ['lines'], queryFn: fetchLines });
+  const { data: groups } = useQuery({ queryKey: ['shift-pattern-groups'], queryFn: fetchShiftPatternGroups });
+
+  function groupName(groupId: number | null): string {
+    if (groupId === null) return '—';
+    return groups?.find((g) => g.id === groupId)?.name ?? '—';
+  }
 
   const createMutation = useMutation({
     mutationFn: (values: LineFormValues) => createLine(values),
@@ -43,6 +49,7 @@ export function LinesPage() {
               <tr>
                 <th className="px-6 py-3">{t('lines.name')}</th>
                 <th className="px-6 py-3">{t('lines.code')}</th>
+                <th className="px-6 py-3">{t('lines.shift_pattern_group')}</th>
                 <th className="px-6 py-3">{t('common.active')}</th>
                 <th className="px-6 py-3" />
               </tr>
@@ -52,6 +59,7 @@ export function LinesPage() {
                 <tr key={line.id} className="border-b border-slate-100">
                   <td className="px-6 py-3 font-medium text-slate-900">{line.name}</td>
                   <td className="px-6 py-3 text-slate-600">{line.code}</td>
+                  <td className="px-6 py-3 text-slate-600">{groupName(line.shift_pattern_group_id)}</td>
                   <td className="px-6 py-3">
                     <Badge tone={line.is_active ? 'success' : 'neutral'}>
                       {line.is_active ? t('common.active') : t('common.inactive')}

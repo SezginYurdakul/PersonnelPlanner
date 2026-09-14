@@ -8,10 +8,12 @@ use App\Modules\Leave\Http\Controllers\LeaveRequestController;
 use App\Modules\Leave\Http\Controllers\LeaveTypeController;
 use App\Modules\Leave\Http\Controllers\SelfServiceLeaveRequestController;
 use App\Modules\Lines\Http\Controllers\LineController;
-use App\Modules\Notifications\Http\Controllers\PushSubscriptionController;
 use App\Modules\Lines\Http\Controllers\PayRateSurchargeRuleController;
 use App\Modules\Lines\Http\Controllers\SchedulingRoleController;
 use App\Modules\Lines\Http\Controllers\ShiftPatternController;
+use App\Modules\Lines\Http\Controllers\ShiftPatternGroupController;
+use App\Modules\Notifications\Http\Controllers\PushSubscriptionController;
+use App\Modules\Reporting\Http\Controllers\ReportController;
 use App\Modules\Scheduling\Http\Controllers\AlternativeCandidateController;
 use App\Modules\Scheduling\Http\Controllers\EmployeeScheduleController;
 use App\Modules\Scheduling\Http\Controllers\ScheduleController;
@@ -75,6 +77,8 @@ Route::prefix('v1')->group(function () {
             Route::apiResource('lines', LineController::class);
             Route::apiResource('roles', SchedulingRoleController::class)->parameters(['roles' => 'scheduling_role']);
             Route::apiResource('shift-patterns', ShiftPatternController::class)->parameters(['shift-patterns' => 'shift_pattern']);
+            Route::apiResource('shift-pattern-groups', ShiftPatternGroupController::class)
+                ->parameters(['shift-pattern-groups' => 'shift_pattern_group']);
             Route::apiResource('pay-rate-surcharge-rules', PayRateSurchargeRuleController::class)
                 ->parameters(['pay-rate-surcharge-rules' => 'pay_rate_surcharge_rule']);
 
@@ -86,7 +90,7 @@ Route::prefix('v1')->group(function () {
             Route::post('/leave-requests/{leave_request}/approve', [LeaveRequestController::class, 'approve']);
             Route::post('/leave-requests/{leave_request}/reject', [LeaveRequestController::class, 'reject']);
 
-            Route::apiResource('schedules', ScheduleController::class)->except(['update']);
+            Route::apiResource('schedules', ScheduleController::class);
             Route::post('/schedules/suggest', [ScheduleSuggestionController::class, 'store']);
             Route::post('/schedules/{schedule}/approve', [ScheduleController::class, 'approve']);
             Route::get('/schedules/{schedule}/alternative-candidates', [AlternativeCandidateController::class, 'index']);
@@ -103,6 +107,10 @@ Route::prefix('v1')->group(function () {
 
             Route::get('/shift-notices', [ShiftNoticeController::class, 'index']);
             Route::post('/shift-notices/{shift_notice}/acknowledge', [ShiftNoticeController::class, 'acknowledge']);
+
+            Route::get('/reports', [ReportController::class, 'show']);
+            Route::get('/reports/export/pdf', [ReportController::class, 'exportPdf']);
+            Route::get('/reports/export/excel', [ReportController::class, 'exportExcel']);
         });
     });
 });

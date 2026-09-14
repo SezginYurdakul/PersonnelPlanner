@@ -2,10 +2,11 @@
 
 namespace App\Modules\Scheduling\Http\Resources;
 
+use App\Modules\Scheduling\Models\Schedule;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/** @mixin \App\Modules\Scheduling\Models\Schedule */
+/** @mixin Schedule */
 class ScheduleResource extends JsonResource
 {
     /**
@@ -16,6 +17,8 @@ class ScheduleResource extends JsonResource
         return [
             'id' => $this->id,
             'week_start_date' => $this->week_start_date?->toDateString(),
+            'label' => $this->label,
+            'note' => $this->note,
             'status' => $this->status,
             'created_by' => $this->created_by,
             'approved_by' => $this->approved_by,

@@ -3,8 +3,14 @@ import { useQuery } from '@tanstack/react-query';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { TimeSelect } from '../../components/ui/TimeSelect';
 import type { Candidate, RankingMode } from '../../types/scheduling';
 import { fetchAlternativeCandidates } from './api';
+
+export interface TimeOverride {
+  startsAt: string;
+  endsAt: string;
+}
 
 interface ManualAssignmentFormModalProps {
   scheduleId: number;
@@ -15,7 +21,7 @@ interface ManualAssignmentFormModalProps {
   roleName: string;
   rankingMode: RankingMode;
   onClose: () => void;
-  onAssign: (employeeId: number, confirmOverride: boolean) => void;
+  onAssign: (employeeId: number, confirmOverride: boolean, timeOverride?: TimeOverride) => void;
 }
 
 export function ManualAssignmentFormModal({
@@ -31,6 +37,11 @@ export function ManualAssignmentFormModal({
 }: ManualAssignmentFormModalProps) {
   const [showAll, setShowAll] = useState(false);
   const [pendingOverride, setPendingOverride] = useState<Candidate | null>(null);
+  const [overrideHours, setOverrideHours] = useState(false);
+  const [startsAt, setStartsAt] = useState('08:00');
+  const [endsAt, setEndsAt] = useState('16:00');
+
+  const timeOverride: TimeOverride | undefined = overrideHours ? { startsAt, endsAt } : undefined;
 
   const { data: candidates, isLoading } = useQuery({
     queryKey: ['alternative-candidates', scheduleId, lineId, shiftPatternId, workDate, roleId, rankingMode],
@@ -54,7 +65,7 @@ export function ManualAssignmentFormModal({
       return;
     }
 
-    onAssign(candidate.employee.id, false);
+    onAssign(candidate.employee.id, false, timeOverride);
   }
 
   return (
@@ -67,10 +78,22 @@ export function ManualAssignmentFormModal({
           </button>
         </div>
 
-        <label className="mb-4 flex items-center gap-2 text-xs font-semibold text-slate-600">
+        <label className="mb-3 flex items-center gap-2 text-xs font-semibold text-slate-600">
           <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
           Show all employees (including unqualified)
         </label>
+
+        <label className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-600">
+          <input type="checkbox" checked={overrideHours} onChange={(e) => setOverrideHours(e.target.checked)} />
+          Override shift hours for this line/assignment
+        </label>
+        {overrideHours && (
+          <div className="mb-4 flex items-center gap-3">
+            <TimeSelect value={startsAt} onChange={setStartsAt} />
+            <span className="text-sm text-slate-400">–</span>
+            <TimeSelect value={endsAt} onChange={setEndsAt} />
+          </div>
+        )}
 
         {isLoading && <p className="text-sm text-slate-500">Loading candidates…</p>}
 
@@ -116,7 +139,7 @@ export function ManualAssignmentFormModal({
           danger
           onCancel={() => setPendingOverride(null)}
           onConfirm={() => {
-            onAssign(pendingOverride.employee.id, true);
+            onAssign(pendingOverride.employee.id, true, timeOverride);
             setPendingOverride(null);
           }}
         />

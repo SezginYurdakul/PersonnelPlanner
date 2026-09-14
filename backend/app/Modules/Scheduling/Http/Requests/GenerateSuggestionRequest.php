@@ -19,10 +19,11 @@ class GenerateSuggestionRequest extends FormRequest
     {
         return [
             'week_start_date' => ['required', 'date'],
+            'schedule_id' => ['nullable', 'integer', 'exists:schedules,id'],
             'line_ids' => ['required', 'array', 'min:1'],
             'line_ids.*' => ['integer', 'exists:lines,id'],
-            'shift_pattern_ids' => ['required', 'array', 'min:1'],
-            'shift_pattern_ids.*' => ['integer', 'exists:shift_patterns,id'],
+            'slot_types' => ['required', 'array', 'min:1'],
+            'slot_types.*' => ['string', 'in:day,afternoon,night'],
             'role_ids' => ['nullable', 'array'],
             'role_ids.*' => ['integer', 'exists:scheduling_roles,id'],
             'ranking_mode' => ['required', 'in:fair,cost'],
@@ -34,10 +35,11 @@ class GenerateSuggestionRequest extends FormRequest
         return new SuggestionRequestData(
             weekStartDate: $this->string('week_start_date')->toString(),
             lineIds: $this->input('line_ids', []),
-            shiftPatternIds: $this->input('shift_pattern_ids', []),
+            slotTypes: $this->input('slot_types', []),
             roleIds: $this->input('role_ids'),
             rankingMode: $this->string('ranking_mode')->toString(),
             requestedBy: $this->user()->id,
+            scheduleId: $this->input('schedule_id'),
         );
     }
 }

@@ -2,6 +2,7 @@ export interface Line {
   id: number;
   name: string;
   code: string;
+  shift_pattern_group_id: number | null;
   is_active: boolean;
 }
 
@@ -19,8 +20,12 @@ export interface SchedulingRole {
   is_active: boolean;
 }
 
+export type SlotType = 'day' | 'afternoon' | 'night';
+
 export interface ShiftPattern {
   id: number;
+  shift_pattern_group_id: number | null;
+  slot_type: SlotType | null;
   name: string;
   start_time: string;
   end_time: string;
@@ -28,9 +33,29 @@ export interface ShiftPattern {
   is_active: boolean;
 }
 
+export interface ShiftPatternGroup {
+  id: number;
+  name: string;
+  is_active: boolean;
+  patterns: ShiftPattern[];
+}
+
+export interface ShiftPatternSlotValues {
+  start_time: string;
+  end_time: string;
+  crosses_midnight: boolean;
+}
+
+export interface ShiftPatternGroupFormValues {
+  name: string;
+  slots: Record<SlotType, ShiftPatternSlotValues>;
+  is_active?: boolean;
+}
+
 export interface LineFormValues {
   name: string;
   code: string;
+  shift_pattern_group_id?: number | null;
   is_active?: boolean;
 }
 

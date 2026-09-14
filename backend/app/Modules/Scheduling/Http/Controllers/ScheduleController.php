@@ -15,9 +15,7 @@ use Illuminate\Http\Response;
 
 class ScheduleController extends Controller
 {
-    public function __construct(private readonly ScheduleServiceContract $schedules)
-    {
-    }
+    public function __construct(private readonly ScheduleServiceContract $schedules) {}
 
     public function index()
     {
@@ -34,9 +32,22 @@ class ScheduleController extends Controller
         $data = new ScheduleData(
             weekStartDate: $request->string('week_start_date')->toString(),
             createdBy: $request->user()->id,
+            label: $request->filled('label') ? $request->string('label')->toString() : null,
+            note: $request->filled('note') ? $request->string('note')->toString() : null,
         );
 
         return new ScheduleResource($this->schedules->create($data));
+    }
+
+    public function update(Request $request, Schedule $schedule): ScheduleResource
+    {
+        $schedule = $this->schedules->updateNote(
+            $schedule,
+            $request->filled('label') ? $request->string('label')->toString() : null,
+            $request->filled('note') ? $request->string('note')->toString() : null,
+        );
+
+        return new ScheduleResource($schedule);
     }
 
     public function destroy(Schedule $schedule): Response

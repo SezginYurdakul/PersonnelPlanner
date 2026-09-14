@@ -12,6 +12,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'week_start_date',
+    'label',
+    'note',
     'status',
     'created_by',
     'approved_by',

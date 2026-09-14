@@ -5,10 +5,12 @@ namespace App\Modules\Lines;
 use App\Modules\Lines\Contracts\LineServiceContract;
 use App\Modules\Lines\Contracts\PayRateSurchargeRuleServiceContract;
 use App\Modules\Lines\Contracts\SchedulingRoleServiceContract;
+use App\Modules\Lines\Contracts\ShiftPatternGroupServiceContract;
 use App\Modules\Lines\Contracts\ShiftPatternServiceContract;
 use App\Modules\Lines\Services\LineService;
 use App\Modules\Lines\Services\PayRateSurchargeRuleService;
 use App\Modules\Lines\Services\SchedulingRoleService;
+use App\Modules\Lines\Services\ShiftPatternGroupService;
 use App\Modules\Lines\Services\ShiftPatternService;
 use Illuminate\Support\ServiceProvider;
 
@@ -20,5 +22,6 @@ class LinesServiceProvider extends ServiceProvider
         $this->app->bind(SchedulingRoleServiceContract::class, SchedulingRoleService::class);
         $this->app->bind(ShiftPatternServiceContract::class, ShiftPatternService::class);
         $this->app->bind(PayRateSurchargeRuleServiceContract::class, PayRateSurchargeRuleService::class);
+        $this->app->bind(ShiftPatternGroupServiceContract::class, ShiftPatternGroupService::class);
     }
 }

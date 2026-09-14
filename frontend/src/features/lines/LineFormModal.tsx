@@ -1,16 +1,22 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
+import { fetchShiftPatternGroups } from './api';
 import type { Line } from '../../types/lines';
 
 const schema = z.object({
   name: z.string().min(1),
   code: z.string().min(1),
+  shift_pattern_group_id: z
+    .union([z.literal(''), z.coerce.number().int()])
+    .transform((value) => (value === '' ? null : value)),
 });
 
-type FormValues = z.infer<typeof schema>;
+type FormInput = z.input<typeof schema>;
+type FormValues = z.output<typeof schema>;
 
 export function LineFormModal({
   line,
@@ -22,13 +28,18 @@ export function LineFormModal({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const { data: groups } = useQuery({ queryKey: ['shift-pattern-groups'], queryFn: fetchShiftPatternGroups });
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-  } = useForm<FormValues>({
+  } = useForm<FormInput, unknown, FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { name: line?.name ?? '', code: line?.code ?? '' },
+    defaultValues: {
+      name: line?.name ?? '',
+      code: line?.code ?? '',
+      shift_pattern_group_id: line?.shift_pattern_group_id ?? '',
+    },
   });
 
   async function submit(values: FormValues) {
@@ -48,8 +59,21 @@ export function LineFormModal({
         {errors.name && <p className="mb-2 text-sm text-red-600">{errors.name.message}</p>}
 
         <label className="mb-1 block text-sm font-medium text-slate-700">{t('lines.code')}</label>
-        <input className="mb-4 w-full rounded border border-slate-300 px-3 py-2 text-sm" {...register('code')} />
+        <input className="mb-3 w-full rounded border border-slate-300 px-3 py-2 text-sm" {...register('code')} />
         {errors.code && <p className="mb-2 text-sm text-red-600">{errors.code.message}</p>}
+
+        <label className="mb-1 block text-sm font-medium text-slate-700">{t('lines.shift_pattern_group')}</label>
+        <select
+          className="mb-4 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          {...register('shift_pattern_group_id')}
+        >
+          <option value="">{t('lines.shift_pattern_group_none')}</option>
+          {groups?.map((group) => (
+            <option key={group.id} value={group.id}>
+              {group.name}
+            </option>
+          ))}
+        </select>
 
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>

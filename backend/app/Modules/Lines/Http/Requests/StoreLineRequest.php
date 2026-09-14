@@ -20,6 +20,7 @@ class StoreLineRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'code' => ['required', 'string', 'max:50', 'unique:lines,code'],
+            'shift_pattern_group_id' => ['nullable', 'integer', 'exists:shift_pattern_groups,id'],
             'is_active' => ['sometimes', 'boolean'],
         ];
     }
@@ -29,6 +30,7 @@ class StoreLineRequest extends FormRequest
         return new LineData(
             name: $this->string('name')->toString(),
             code: $this->string('code')->toString(),
+            shiftPatternGroupId: $this->input('shift_pattern_group_id'),
             isActive: $this->boolean('is_active', true),
         );
     }

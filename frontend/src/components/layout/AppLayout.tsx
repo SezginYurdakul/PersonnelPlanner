@@ -14,6 +14,7 @@ const navItems = [
   { to: '/pay-rate-surcharge-rules', labelKey: 'nav.pay_rate_rules', icon: 'fa-file-invoice-dollar' },
   { to: '/leave-requests', labelKey: 'nav.leave_requests', icon: 'fa-calendar-check' },
   { to: '/time-attendance', labelKey: 'nav.time_attendance', icon: 'fa-clock' },
+  { to: '/reports', labelKey: 'nav.reports', icon: 'fa-chart-column' },
   { to: '/company-settings', labelKey: 'nav.company_settings', icon: 'fa-gear' },
 ];
 

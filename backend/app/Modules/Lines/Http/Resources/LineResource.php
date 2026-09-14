@@ -2,10 +2,11 @@
 
 namespace App\Modules\Lines\Http\Resources;
 
+use App\Modules\Lines\Models\Line;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/** @mixin \App\Modules\Lines\Models\Line */
+/** @mixin Line */
 class LineResource extends JsonResource
 {
     /**
@@ -17,6 +18,7 @@ class LineResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'code' => $this->code,
+            'shift_pattern_group_id' => $this->shift_pattern_group_id,
             'is_active' => $this->is_active,
         ];
     }

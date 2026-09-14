@@ -6,6 +6,7 @@ use App\Modules\Dashboard\DashboardServiceProvider;
 use App\Modules\Leave\LeaveServiceProvider;
 use App\Modules\Lines\LinesServiceProvider;
 use App\Modules\Notifications\NotificationsServiceProvider;
+use App\Modules\Reporting\ReportingServiceProvider;
 use App\Modules\Scheduling\SchedulingServiceProvider;
 use App\Modules\ShiftNotices\ShiftNoticesServiceProvider;
 use App\Modules\Staff\StaffServiceProvider;
@@ -26,4 +27,5 @@ return [
     CompanySettingsServiceProvider::class,
     ShiftNoticesServiceProvider::class,
     NotificationsServiceProvider::class,
+    ReportingServiceProvider::class,
 ];

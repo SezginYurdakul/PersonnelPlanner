@@ -39,6 +39,11 @@ class Employee extends Model
     /** @use HasFactory<EmployeeFactory> */
     use HasFactory, Notifiable, SoftDeletes;
 
+    /** Average weeks per month, used only to derive an effective hourly cost for a
+     *  monthly-salary employee - for ranking/reporting purposes only, never a payroll
+     *  calculation (ProjectPlan.md §11.2). */
+    private const WEEKS_PER_MONTH = 52 / 12;
+
     protected function casts(): array
     {
         return [
@@ -105,6 +110,23 @@ class Employee extends Model
     public function hasLinkedAccount(): bool
     {
         return $this->user_id !== null;
+    }
+
+    /**
+     * Monthly salary -> effective hourly cost; an hourly-paid (including agency) employee
+     * uses their stored `hourly_rate` directly. Shared by the suggestion engine's cost
+     * ranking (§12.2) and the reporting module's cost breakdown (§14.2), so this
+     * conversion exists in exactly one place.
+     */
+    public function effectiveHourlyRate(): float
+    {
+        if ($this->pay_type === 'monthly') {
+            $monthlyHours = (float) $this->contracted_hours_per_week * self::WEEKS_PER_MONTH;
+
+            return $monthlyHours > 0 ? (float) $this->monthly_salary / $monthlyHours : 0.0;
+        }
+
+        return (float) $this->hourly_rate;
     }
 
     /**

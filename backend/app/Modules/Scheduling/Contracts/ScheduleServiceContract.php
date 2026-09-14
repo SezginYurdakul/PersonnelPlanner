@@ -18,6 +18,12 @@ interface ScheduleServiceContract
 
     public function create(ScheduleData $data): Schedule;
 
+    /**
+     * Updates a draft/proposed schedule's label/note (ProjectPlan.md's multi-scenario
+     * support) - never touches status/assignments, only how the admin annotates it.
+     */
+    public function updateNote(Schedule $schedule, ?string $label, ?string $note): Schedule;
+
     public function approve(Schedule $schedule, User $approver): Schedule;
 
     public function delete(Schedule $schedule): void;

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import dayjs from 'dayjs';
 import { AppLayout } from '../components/layout/AppLayout';
 import { Button } from '../components/ui/Button';
+import { SchedulePlanList } from '../features/scheduling/SchedulePlanList';
 import { WeeklyScheduleGrid } from '../features/scheduling/WeeklyScheduleGrid';
 
 type WeekStartDay = 'monday' | 'sunday';
@@ -25,10 +26,17 @@ function currentWeekStart(weekStartDay: WeekStartDay): string {
 export function WeeklySchedulePage() {
   const [weekStartDay, setWeekStartDay] = useState<WeekStartDay>('monday');
   const [weekStartDate, setWeekStartDate] = useState(() => currentWeekStart('monday'));
+  const [selectedScheduleId, setSelectedScheduleId] = useState<number | null>(null);
 
   function handleWeekStartDayChange(next: WeekStartDay) {
     setWeekStartDay(next);
     setWeekStartDate(currentWeekStart(next));
+    setSelectedScheduleId(null);
+  }
+
+  function changeWeek(nextWeekStartDate: string) {
+    setWeekStartDate(nextWeekStartDate);
+    setSelectedScheduleId(null);
   }
 
   return (
@@ -50,13 +58,13 @@ export function WeeklySchedulePage() {
           <div className="flex items-center gap-2">
             <Button
               variant="secondary"
-              onClick={() => setWeekStartDate(dayjs(weekStartDate).subtract(7, 'day').format('YYYY-MM-DD'))}
+              onClick={() => changeWeek(dayjs(weekStartDate).subtract(7, 'day').format('YYYY-MM-DD'))}
             >
               <i className="fa-solid fa-chevron-left" />
             </Button>
             <Button
               variant="secondary"
-              onClick={() => setWeekStartDate(dayjs(weekStartDate).add(7, 'day').format('YYYY-MM-DD'))}
+              onClick={() => changeWeek(dayjs(weekStartDate).add(7, 'day').format('YYYY-MM-DD'))}
             >
               <i className="fa-solid fa-chevron-right" />
             </Button>
@@ -64,7 +72,11 @@ export function WeeklySchedulePage() {
         </div>
       </div>
 
-      <WeeklyScheduleGrid weekStartDate={weekStartDate} />
+      {selectedScheduleId === null ? (
+        <SchedulePlanList weekStartDate={weekStartDate} onSelect={setSelectedScheduleId} />
+      ) : (
+        <WeeklyScheduleGrid scheduleId={selectedScheduleId} onBack={() => setSelectedScheduleId(null)} />
+      )}
     </AppLayout>
   );
 }

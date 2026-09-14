@@ -30,8 +30,7 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
     public function __construct(
         private readonly SlotCandidateRanker $ranker,
         private readonly ShiftAssignmentServiceContract $shiftAssignmentService,
-    ) {
-    }
+    ) {}
 
     public function generate(SuggestionRequestData $request): SuggestionResultData
     {
@@ -39,7 +38,27 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
         $schedule = $this->findOrCreateDraftSchedule($request);
 
         $lines = Line::query()->whereIn('id', $request->lineIds)->get();
-        $shiftPatterns = ShiftPattern::query()->whereIn('id', $request->shiftPatternIds)->get();
+
+        // Every ShiftPattern row across the selected lines' own groups, for the selected
+        // slot types - keyed by "lineId|slotType" so the day-by-day loop below can resolve
+        // each role's line to the correct concrete hours (ProjectPlan.md: "Day Shift"
+        // stays one name everywhere, but its hours vary by the line's shift_pattern_group).
+        $patternsByGroupAndSlot = ShiftPattern::query()
+            ->whereIn('shift_pattern_group_id', $lines->pluck('shift_pattern_group_id')->filter()->unique())
+            ->whereIn('slot_type', $request->slotTypes)
+            ->get()
+            ->groupBy('shift_pattern_group_id');
+
+        $shiftPatternsByLineAndSlot = collect();
+        foreach ($lines as $line) {
+            if ($line->shift_pattern_group_id === null) {
+                continue;
+            }
+
+            foreach ($patternsByGroupAndSlot->get($line->shift_pattern_group_id, collect()) as $pattern) {
+                $shiftPatternsByLineAndSlot->put("{$line->id}|{$pattern->slot_type}", $pattern);
+            }
+        }
 
         $stationRolesQuery = SchedulingRole::query()
             ->where('role_kind', SchedulingRole::KIND_STATION)
@@ -75,12 +94,21 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
         foreach ($days as $day) {
             $assignedToday = collect();
 
-            foreach ($shiftPatterns as $shiftPattern) {
-                [$shiftStart, $shiftEnd] = $this->shiftTimeRange($day, $shiftPattern);
-
+            foreach ($request->slotTypes as $slotType) {
                 $stationAssignmentsThisSlot = collect();
 
                 foreach ($stationRoles as $role) {
+                    $shiftPattern = $shiftPatternsByLineAndSlot->get("{$role->line_id}|{$slotType}");
+
+                    if ($shiftPattern === null) {
+                        // This role's line has no pattern for this slot type (either the
+                        // line has no shift_pattern_group set, or its group doesn't define
+                        // this slot) - nothing to schedule here.
+                        continue;
+                    }
+
+                    [$shiftStart, $shiftEnd] = $this->shiftTimeRange($day, $shiftPattern);
+
                     $pool = $this->buildCandidatePool($day, $role);
                     $poolEmployeeIds = $poolEmployeeIds->merge($pool->pluck('id'));
 
@@ -141,9 +169,8 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
                         $schedule,
                         $task,
                         $day,
-                        $shiftPattern,
-                        $shiftStart,
-                        $shiftEnd,
+                        $slotType,
+                        $shiftPatternsByLineAndSlot,
                         $stationAssignmentsThisSlot,
                         $secondaryTaskCounts,
                         $unfilled,
@@ -168,17 +195,23 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
         return new SuggestionResultData($schedule->fresh(['assignments.employee', 'assignments.line', 'assignments.shiftPattern', 'assignments.role']), $unfilled);
     }
 
+    /**
+     * Since a week may now have more than one draft/proposed Schedule (ProjectPlan.md's
+     * multiple-scenario support), which one to regenerate is never guessed from
+     * week_start_date alone - the caller must say so via scheduleId, or this always starts
+     * a brand new draft.
+     */
     private function findOrCreateDraftSchedule(SuggestionRequestData $request): Schedule
     {
         $scope = [
             'line_ids' => $request->lineIds,
-            'shift_pattern_ids' => $request->shiftPatternIds,
+            'slot_types' => $request->slotTypes,
             'role_ids' => $request->roleIds,
         ];
 
-        $schedule = Schedule::query()->where('week_start_date', $request->weekStartDate)->first();
+        if ($request->scheduleId !== null) {
+            $schedule = Schedule::query()->findOrFail($request->scheduleId);
 
-        if ($schedule !== null) {
             if ($schedule->status === Schedule::STATUS_APPROVED) {
                 throw new RuntimeException('Cannot regenerate an already-approved schedule; edit it manually instead.');
             }
@@ -235,19 +268,22 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
      * of the schedule's ranking_mode.
      *
      * @param  Collection<int, array{employee: Employee, role: SchedulingRole}>  $stationAssignmentsThisSlot
+     * @param  Collection<string, ShiftPattern>  $shiftPatternsByLineAndSlot  keyed by
+     *                                                                        "lineId|slotType" - a secondary task's effective line (its own line_id, or the
+     *                                                                        line of whichever station it's attached to) determines which concrete pattern row
+     *                                                                        applies, since the same slot type has different hours on different lines.
      * @param  Collection<int, float>  $secondaryTaskCounts
      * @param  Collection<int, UnfilledSlotData>  $unfilled
      * @param  Collection<int, bool>  $assignedToday  employee_id => true for anyone already
-     *   given any assignment today - a secondary task also counts as "worked today" for the
-     *   consecutive-rest-day bookkeeping in generate().
+     *                                                given any assignment today - a secondary task also counts as "worked today" for the
+     *                                                consecutive-rest-day bookkeeping in generate().
      */
     private function assignSecondaryTask(
         Schedule $schedule,
         SchedulingRole $task,
         Carbon $day,
-        ShiftPattern $shiftPattern,
-        Carbon $shiftStart,
-        Carbon $shiftEnd,
+        string $slotType,
+        Collection $shiftPatternsByLineAndSlot,
         Collection $stationAssignmentsThisSlot,
         Collection $secondaryTaskCounts,
         Collection $unfilled,
@@ -262,6 +298,15 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
                 ->pluck('employee'),
             default => $stationAssignmentsThisSlot->pluck('employee'),
         };
+
+        $effectiveLineId = $task->line_id ?? $stationAssignmentsThisSlot->first()['role']->line_id ?? null;
+        $shiftPattern = $effectiveLineId !== null
+            ? $shiftPatternsByLineAndSlot->get("{$effectiveLineId}|{$slotType}")
+            : null;
+
+        if ($shiftPattern === null) {
+            return;
+        }
 
         $qualifiedEmployeeIds = $task->qualifiedEmployees()->pluck('employees.id')->all();
         $qualifiedPool = $candidatePool->filter(fn (Employee $e) => in_array($e->id, $qualifiedEmployeeIds, true));
@@ -283,7 +328,7 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
 
         $this->shiftAssignmentService->create($schedule, new ShiftAssignmentData(
             employeeId: $winner->id,
-            lineId: $task->line_id ?? $stationAssignmentsThisSlot->first()['role']->line_id,
+            lineId: $effectiveLineId,
             shiftPatternId: $shiftPattern->id,
             workDate: $day->format('Y-m-d'),
             roleId: $task->id,

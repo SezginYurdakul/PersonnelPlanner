@@ -8,6 +8,8 @@ import type {
   SchedulingRoleFormValues,
   ShiftPattern,
   ShiftPatternFormValues,
+  ShiftPatternGroup,
+  ShiftPatternGroupFormValues,
 } from '../../types/lines';
 
 interface ApiEnvelope<T> {
@@ -94,6 +96,32 @@ export async function updateShiftPattern(id: number, payload: ShiftPatternFormVa
 
 export async function deactivateShiftPattern(id: number): Promise<ShiftPattern> {
   const { data } = await apiClient.delete<ApiEnvelope<ShiftPattern>>(`/shift-patterns/${id}`);
+  return data.data;
+}
+
+// Shift pattern groups - a named set of day/afternoon/night hours a line can pick
+// (e.g. "Pattern A": Day 08-16 vs. "Pattern B": Day 10-18).
+
+export async function fetchShiftPatternGroups(): Promise<ShiftPatternGroup[]> {
+  const { data } = await apiClient.get<ApiEnvelope<ShiftPatternGroup[]>>('/shift-pattern-groups');
+  return data.data;
+}
+
+export async function createShiftPatternGroup(payload: ShiftPatternGroupFormValues): Promise<ShiftPatternGroup> {
+  const { data } = await apiClient.post<ApiEnvelope<ShiftPatternGroup>>('/shift-pattern-groups', payload);
+  return data.data;
+}
+
+export async function updateShiftPatternGroup(
+  id: number,
+  payload: ShiftPatternGroupFormValues,
+): Promise<ShiftPatternGroup> {
+  const { data } = await apiClient.put<ApiEnvelope<ShiftPatternGroup>>(`/shift-pattern-groups/${id}`, payload);
+  return data.data;
+}
+
+export async function deactivateShiftPatternGroup(id: number): Promise<ShiftPatternGroup> {
+  const { data } = await apiClient.delete<ApiEnvelope<ShiftPatternGroup>>(`/shift-pattern-groups/${id}`);
   return data.data;
 }
 

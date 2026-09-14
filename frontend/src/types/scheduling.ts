@@ -1,4 +1,4 @@
-import type { Line, SchedulingRole, ShiftPattern } from './lines';
+import type { Line, SchedulingRole, ShiftPattern, SlotType } from './lines';
 
 export type ScheduleStatus = 'draft' | 'proposed' | 'approved';
 export type AssignmentStatus = 'proposed' | 'confirmed';
@@ -55,6 +55,8 @@ export interface GeneratedScope {
 export interface Schedule {
   id: number;
   week_start_date: string;
+  label: string | null;
+  note: string | null;
   status: ScheduleStatus;
   created_by: number;
   approved_by: number | null;
@@ -98,10 +100,22 @@ export interface ApprovalBlockedError {
 
 export interface GenerateSuggestionPayload {
   week_start_date: string;
+  schedule_id?: number;
   line_ids: number[];
-  shift_pattern_ids: number[];
+  slot_types: SlotType[];
   role_ids?: number[] | null;
   ranking_mode: RankingMode;
+}
+
+export interface CreateSchedulePayload {
+  week_start_date: string;
+  label?: string;
+  note?: string;
+}
+
+export interface UpdateSchedulePayload {
+  label?: string;
+  note?: string;
 }
 
 export interface CreateAssignmentPayload {

@@ -12,6 +12,7 @@ import { LeaveRequestsPage } from './pages/LeaveRequestsPage';
 import { WeeklySchedulePage } from './pages/WeeklySchedulePage';
 import { TimeAttendanceImportPage } from './pages/TimeAttendanceImportPage';
 import { CompanySettingsPage } from './pages/CompanySettingsPage';
+import { ReportsPage } from './pages/ReportsPage';
 import { CompletePasswordPage } from './pages/CompletePasswordPage';
 import { EmployeeSchedulePage } from './pages/EmployeeSchedulePage';
 import { LeaveRequestPage } from './pages/LeaveRequestPage';
@@ -117,6 +118,14 @@ export function App() {
           element={
             <ProtectedRoute adminOnly>
               <CompanySettingsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports"
+          element={
+            <ProtectedRoute adminOnly>
+              <ReportsPage />
             </ProtectedRoute>
           }
         />

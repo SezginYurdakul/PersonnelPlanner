@@ -25,7 +25,10 @@ return [
 
     'allowed_headers' => ['*'],
 
-    'exposed_headers' => [],
+    // Report exports (§14.2) set a filename via Content-Disposition - without exposing
+    // this header, the frontend's JS can read the file but never the server-chosen name,
+    // and silently falls back to a generic one.
+    'exposed_headers' => ['Content-Disposition'],
 
     'max_age' => 0,
 

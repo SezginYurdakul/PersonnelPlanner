@@ -39,13 +39,35 @@ final class ScheduleService implements ScheduleServiceContract
         ]);
     }
 
+    public function updateNote(Schedule $schedule, ?string $label, ?string $note): Schedule
+    {
+        $schedule->update(['label' => $label, 'note' => $note]);
+
+        return $schedule->refresh();
+    }
+
     /**
      * @throws ScheduleCannotBeApprovedException if a requires_coverage station within this
      *                                           schedule's generated scope has an unresolved unfilled slot (ProjectPlan.md §12.3b -
      *                                           the one hard block in this system, unlike every other rule violation).
+     * @throws ValidationException if another schedule for the same week is already
+     *                             approved - multiple draft/proposed scenarios may coexist for a week (so the admin
+     *                             can compare alternatives), but only one may ever be the approved one.
      */
     public function approve(Schedule $schedule, User $approver): Schedule
     {
+        $alreadyApprovedForWeek = Schedule::query()
+            ->where('week_start_date', $schedule->week_start_date)
+            ->where('status', Schedule::STATUS_APPROVED)
+            ->where('id', '!=', $schedule->id)
+            ->exists();
+
+        if ($alreadyApprovedForWeek) {
+            throw ValidationException::withMessages([
+                'schedule' => 'Another schedule for this week has already been approved. Reject or delete it before approving this one.',
+            ]);
+        }
+
         $blockingSlots = $this->coverageChecker->unresolvedBlockingSlots($schedule);
 
         if ($blockingSlots->isNotEmpty()) {
