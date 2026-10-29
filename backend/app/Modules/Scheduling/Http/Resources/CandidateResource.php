@@ -2,10 +2,11 @@
 
 namespace App\Modules\Scheduling\Http\Resources;
 
+use App\Modules\Scheduling\DTOs\CandidateData;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/** @mixin \App\Modules\Scheduling\DTOs\CandidateData */
+/** @mixin CandidateData */
 class CandidateResource extends JsonResource
 {
     /**
@@ -23,6 +24,7 @@ class CandidateResource extends JsonResource
             'qualified' => $this->qualified,
             'rule_compliant' => $this->ruleCompliant,
             'exclusion_reason' => $this->exclusionReason,
+            'violates_employee_constraint' => $this->violatesEmployeeConstraint,
         ];
     }
 }

@@ -11,7 +11,10 @@ final readonly class SchedulingRoleData
         public ?bool $requiresCoverage = null,
         public ?string $attachmentType = null,
         public ?int $attachedStationRoleId = null,
+        public ?bool $allowsSecondPerson = null,
+        public ?int $minHeadcount = null,
         public bool $isActive = true,
+        public float $fairnessWeight = 1.0,
     ) {}
 
     /**
@@ -26,7 +29,10 @@ final readonly class SchedulingRoleData
             'requires_coverage' => $this->requiresCoverage,
             'attachment_type' => $this->attachmentType,
             'attached_station_role_id' => $this->attachedStationRoleId,
+            'allows_second_person' => $this->allowsSecondPerson,
+            'min_headcount' => $this->minHeadcount,
             'is_active' => $this->isActive,
+            'fairness_weight' => $this->fairnessWeight,
         ];
     }
 }

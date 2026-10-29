@@ -10,6 +10,7 @@ final readonly class EmploymentTermData
         public int $maxWeeklyHours,
         public Carbon $effectiveFrom,
         public ?Carbon $effectiveTo = null,
+        public ?int $minWeeklyHours = null,
     ) {}
 
     /**
@@ -19,6 +20,7 @@ final readonly class EmploymentTermData
     {
         return [
             'max_weekly_hours' => $this->maxWeeklyHours,
+            'min_weekly_hours' => $this->minWeeklyHours,
             'effective_from' => $this->effectiveFrom,
             'effective_to' => $this->effectiveTo,
         ];

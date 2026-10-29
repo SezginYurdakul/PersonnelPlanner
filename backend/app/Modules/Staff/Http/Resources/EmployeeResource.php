@@ -36,6 +36,13 @@ class EmployeeResource extends JsonResource
             // this Employee's own employment status and unrelated to login access.
             'account_active' => $this->hasLinkedAccount() ? (bool) $this->user?->is_active : null,
             'is_active' => $this->is_active,
+            'is_shift_lead' => $this->is_shift_lead,
+            'notes' => $this->notes,
+            'unavailable_slots' => $this->whenLoaded('unavailabilities', fn () => $this->unavailabilities->map(fn ($u) => [
+                'day_of_week' => $u->day_of_week,
+                'slot_type' => $u->slot_type,
+            ])),
+            'excluded_role_ids' => $this->whenLoaded('roleExclusions', fn () => $this->roleExclusions->pluck('scheduling_role_id')),
         ];
     }
 }

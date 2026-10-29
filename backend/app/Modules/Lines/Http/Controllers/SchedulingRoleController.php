@@ -11,6 +11,7 @@ use App\Modules\Lines\Http\Resources\SchedulingRoleResource;
 use App\Modules\Lines\Models\SchedulingRole;
 use App\Modules\Staff\Models\Employee;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 
 class SchedulingRoleController extends Controller
 {
@@ -51,6 +52,13 @@ class SchedulingRoleController extends Controller
     public function destroy(SchedulingRole $schedulingRole): SchedulingRoleResource
     {
         return new SchedulingRoleResource($this->roles->deactivate($schedulingRole));
+    }
+
+    public function destroyPermanently(SchedulingRole $schedulingRole): Response
+    {
+        $this->roles->delete($schedulingRole);
+
+        return response()->noContent();
     }
 
     public function syncQualifications(SyncQualificationsRequest $request, Employee $employee)

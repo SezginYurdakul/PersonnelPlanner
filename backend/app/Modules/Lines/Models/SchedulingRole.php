@@ -2,6 +2,7 @@
 
 namespace App\Modules\Lines\Models;
 
+use App\Modules\Scheduling\Models\ShiftAssignment;
 use App\Modules\Staff\Models\Employee;
 use Database\Factories\SchedulingRoleFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -18,6 +19,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'requires_coverage',
     'attachment_type',
     'attached_station_role_id',
+    'allows_second_person',
+    'min_headcount',
+    'fairness_weight',
     'is_active',
 ])]
 class SchedulingRole extends Model
@@ -33,6 +37,9 @@ class SchedulingRole extends Model
     {
         return [
             'requires_coverage' => 'boolean',
+            'allows_second_person' => 'boolean',
+            'min_headcount' => 'integer',
+            'fairness_weight' => 'float',
             'is_active' => 'boolean',
         ];
     }
@@ -72,6 +79,17 @@ class SchedulingRole extends Model
         return $this->belongsToMany(Employee::class, 'employee_scheduling_roles');
     }
 
+    /**
+     * Employees who must never be assigned to this role - independent of, and layered on
+     * top of, qualifiedEmployees() (see EmployeeRoleExclusion's docblock).
+     *
+     * @return BelongsToMany<Employee, $this>
+     */
+    public function excludedEmployees(): BelongsToMany
+    {
+        return $this->belongsToMany(Employee::class, 'employee_role_exclusions');
+    }
+
     public function isStation(): bool
     {
         return $this->role_kind === self::KIND_STATION;
@@ -80,5 +98,13 @@ class SchedulingRole extends Model
     public function isSecondaryTask(): bool
     {
         return $this->role_kind === self::KIND_SECONDARY_TASK;
+    }
+
+    /**
+     * @return HasMany<ShiftAssignment, $this>
+     */
+    public function shiftAssignments(): HasMany
+    {
+        return $this->hasMany(ShiftAssignment::class, 'role_id');
     }
 }

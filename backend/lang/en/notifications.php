@@ -14,4 +14,10 @@ return [
         'action' => 'View your schedule',
     ],
 
+    'schedule_corrected' => [
+        'subject' => 'Your approved schedule was corrected',
+        'line' => 'The schedule for the week of :week, already approved, has been corrected (version :version). Please review it and confirm you have seen the change.',
+        'action' => 'Review and confirm',
+    ],
+
 ];

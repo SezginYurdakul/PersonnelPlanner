@@ -8,16 +8,16 @@ use App\Modules\Staff\DTOs\EmployeeData;
 use App\Modules\Staff\DTOs\EmploymentTermData;
 use App\Modules\Staff\Models\Employee;
 use App\Modules\Staff\Models\EmploymentTerm;
-use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 
 final class EmployeeService implements EmployeeServiceContract
 {
     /**
      * @param  array<string, mixed>  $filters
-     * @return LengthAwarePaginator<int, Employee>
+     * @return Collection<int, Employee>
      */
-    public function list(array $filters): LengthAwarePaginator
+    public function list(array $filters): Collection
     {
         $query = Employee::query()->with(['agency', 'currentEmploymentTerm', 'user']);
 
@@ -42,7 +42,7 @@ final class EmployeeService implements EmployeeServiceContract
             $hasAccount ? $query->whereNotNull('user_id') : $query->whereNull('user_id');
         }
 
-        return $query->orderBy('last_name')->orderBy('first_name')->paginate();
+        return $query->orderBy('last_name')->orderBy('first_name')->get();
     }
 
     public function create(EmployeeData $data): Employee
@@ -62,6 +62,21 @@ final class EmployeeService implements EmployeeServiceContract
         $employee->update(['is_active' => false]);
 
         return $employee->refresh();
+    }
+
+    public function delete(Employee $employee): void
+    {
+        if ($employee->shiftAssignments()->exists()
+            || $employee->leaveRequests()->exists()
+            || $employee->shiftNotices()->exists()
+            || $employee->timeClockEntries()->exists()
+        ) {
+            throw ValidationException::withMessages([
+                'employee' => __('staff.has_operational_history'),
+            ]);
+        }
+
+        $employee->forceDelete();
     }
 
     public function linkUser(Employee $employee, User $user): Employee
@@ -98,5 +113,32 @@ final class EmployeeService implements EmployeeServiceContract
         }
 
         return $employee->employmentTerms()->create($data->toArray());
+    }
+
+    public function syncUnavailability(Employee $employee, array $unavailableSlots): Collection
+    {
+        $employee->unavailabilities()->delete();
+
+        $employee->unavailabilities()->createMany($unavailableSlots);
+
+        return $employee->unavailabilities()->get();
+    }
+
+    public function syncRoleExclusions(Employee $employee, array $schedulingRoleIds): Collection
+    {
+        $employee->roleExclusions()->delete();
+
+        $employee->roleExclusions()->createMany(
+            collect($schedulingRoleIds)->map(fn (int $roleId) => ['scheduling_role_id' => $roleId])->all()
+        );
+
+        return $employee->roleExclusions()->with('schedulingRole.line')->get();
+    }
+
+    public function updateNotes(Employee $employee, ?string $notes): Employee
+    {
+        $employee->update(['notes' => $notes]);
+
+        return $employee->refresh();
     }
 }

@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['employee_id', 'max_weekly_hours', 'effective_from', 'effective_to'])]
+#[Fillable(['employee_id', 'max_weekly_hours', 'min_weekly_hours', 'effective_from', 'effective_to'])]
 class EmploymentTerm extends Model
 {
     /** @use HasFactory<EmploymentTermFactory> */

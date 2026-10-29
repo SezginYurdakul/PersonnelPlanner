@@ -11,9 +11,7 @@ use Illuminate\Support\Carbon;
 
 class AlternativeCandidateController extends Controller
 {
-    public function __construct(private readonly AlternativeCandidateServiceContract $alternatives)
-    {
-    }
+    public function __construct(private readonly AlternativeCandidateServiceContract $alternatives) {}
 
     public function index(Request $request, Schedule $schedule)
     {
@@ -23,6 +21,8 @@ class AlternativeCandidateController extends Controller
             'work_date' => ['required', 'date'],
             'role_id' => ['required', 'integer', 'exists:scheduling_roles,id'],
             'ranking_mode' => ['required', 'in:fair,cost'],
+            'starts_at' => ['nullable', 'date_format:H:i'],
+            'ends_at' => ['nullable', 'date_format:H:i'],
         ]);
 
         $candidates = $this->alternatives->forSlot(
@@ -32,6 +32,8 @@ class AlternativeCandidateController extends Controller
             workDate: Carbon::parse($validated['work_date']),
             roleId: (int) $validated['role_id'],
             rankingMode: $validated['ranking_mode'],
+            startsAt: $validated['starts_at'] ?? null,
+            endsAt: $validated['ends_at'] ?? null,
         );
 
         return CandidateResource::collection($candidates);

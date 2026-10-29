@@ -19,12 +19,13 @@ final readonly class UnfilledSlotData
      * @param  Collection<int, CandidateData>  $alternatives
      */
     public function __construct(
-        public Line $line,
+        public ?Line $line,
         public ?ShiftPattern $shiftPattern,
         public Carbon $workDate,
         public SchedulingRole $role,
         public bool $blocking,
         public Collection $alternatives,
-    ) {
-    }
+        public int $missingCount = 1,
+        public ?string $reason = null,
+    ) {}
 }

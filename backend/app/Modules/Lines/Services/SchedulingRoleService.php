@@ -7,6 +7,7 @@ use App\Modules\Lines\DTOs\SchedulingRoleData;
 use App\Modules\Lines\Models\SchedulingRole;
 use App\Modules\Staff\Models\Employee;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Validation\ValidationException;
 
 final class SchedulingRoleService implements SchedulingRoleServiceContract
 {
@@ -52,6 +53,17 @@ final class SchedulingRoleService implements SchedulingRoleServiceContract
         return $role->refresh();
     }
 
+    public function delete(SchedulingRole $role): void
+    {
+        if ($role->shiftAssignments()->exists()) {
+            throw ValidationException::withMessages([
+                'role' => __('lines.role_has_operational_history'),
+            ]);
+        }
+
+        $role->delete();
+    }
+
     /**
      * @param  array<int>  $roleIds
      * @return Collection<int, SchedulingRole>
@@ -65,8 +77,13 @@ final class SchedulingRoleService implements SchedulingRoleServiceContract
 
     /**
      * Enforces the role_kind-driven field rules from ProjectPlan.md §17A.5a:
-     * requires_coverage is meaningless for secondary tasks, attachment_type/
-     * attached_station_role_id are meaningless for stations.
+     * attachment_type/attached_station_role_id are meaningless for stations.
+     *
+     * requires_coverage is meaningful for BOTH kinds: a mandatory secondary task (e.g. a
+     * fault-response duty) is staffed the same way as any other secondary task - from
+     * whoever already holds this shift, never a new hire - but going unfilled still blocks
+     * approval, exactly like a mandatory station (MandatoryCoverageChecker treats both the
+     * same way).
      *
      * @return array<string, mixed>
      */
@@ -78,8 +95,12 @@ final class SchedulingRoleService implements SchedulingRoleServiceContract
             $attributes['requires_coverage'] = $data->requiresCoverage ?? true;
             $attributes['attachment_type'] = null;
             $attributes['attached_station_role_id'] = null;
+            $attributes['allows_second_person'] = $data->allowsSecondPerson ?? false;
+            $attributes['min_headcount'] = $data->minHeadcount ?? 1;
         } else {
-            $attributes['requires_coverage'] = false;
+            $attributes['requires_coverage'] = $data->requiresCoverage ?? false;
+            $attributes['allows_second_person'] = false;
+            $attributes['min_headcount'] = 1;
 
             if ($data->attachmentType !== 'station') {
                 $attributes['attached_station_role_id'] = null;

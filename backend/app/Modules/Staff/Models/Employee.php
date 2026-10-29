@@ -7,6 +7,8 @@ use App\Modules\Leave\Models\LeaveRequest;
 use App\Modules\Lines\Models\Line;
 use App\Modules\Lines\Models\SchedulingRole;
 use App\Modules\Notifications\Models\PushSubscription;
+use App\Modules\Scheduling\Models\ShiftAssignment;
+use App\Modules\ShiftNotices\Models\ShiftNotice;
 use App\Modules\TimeAttendance\Models\TimeClockEntry;
 use Database\Factories\EmployeeFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -33,6 +35,8 @@ use Illuminate\Notifications\Notifiable;
     'contracted_hours_per_week',
     'default_line_id',
     'is_active',
+    'is_shift_lead',
+    'notes',
 ])]
 class Employee extends Model
 {
@@ -51,6 +55,7 @@ class Employee extends Model
             'monthly_salary' => 'decimal:2',
             'contracted_hours_per_week' => 'decimal:2',
             'is_active' => 'boolean',
+            'is_shift_lead' => 'boolean',
         ];
     }
 
@@ -95,6 +100,42 @@ class Employee extends Model
     public function employmentTerms(): HasMany
     {
         return $this->hasMany(EmploymentTerm::class);
+    }
+
+    /**
+     * Day/shift combinations this employee is NOT available for - absence of a row means
+     * available (see EmployeeUnavailability's docblock).
+     *
+     * @return HasMany<EmployeeUnavailability, $this>
+     */
+    public function unavailabilities(): HasMany
+    {
+        return $this->hasMany(EmployeeUnavailability::class);
+    }
+
+    /**
+     * Scheduling roles this employee must never be assigned to, independent of
+     * qualification (see EmployeeRoleExclusion's docblock).
+     *
+     * @return HasMany<EmployeeRoleExclusion, $this>
+     */
+    public function roleExclusions(): HasMany
+    {
+        return $this->hasMany(EmployeeRoleExclusion::class);
+    }
+
+    public function isUnavailable(int $isoDayOfWeek, string $slotType): bool
+    {
+        return $this->unavailabilities->contains(
+            fn (EmployeeUnavailability $u) => $u->day_of_week === $isoDayOfWeek && $u->slot_type === $slotType
+        );
+    }
+
+    public function isExcludedFromRole(int $schedulingRoleId): bool
+    {
+        return $this->roleExclusions->contains(
+            fn (EmployeeRoleExclusion $e) => $e->scheduling_role_id === $schedulingRoleId
+        );
     }
 
     /**
@@ -151,6 +192,22 @@ class Employee extends Model
     public function pushSubscriptions(): HasMany
     {
         return $this->hasMany(PushSubscription::class);
+    }
+
+    /**
+     * @return HasMany<ShiftAssignment, $this>
+     */
+    public function shiftAssignments(): HasMany
+    {
+        return $this->hasMany(ShiftAssignment::class);
+    }
+
+    /**
+     * @return HasMany<ShiftNotice, $this>
+     */
+    public function shiftNotices(): HasMany
+    {
+        return $this->hasMany(ShiftNotice::class);
     }
 
     /**

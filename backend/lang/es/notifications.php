@@ -14,4 +14,10 @@ return [
         'action' => 'Ver tu horario',
     ],
 
+    'schedule_corrected' => [
+        'subject' => 'Tu horario aprobado ha sido corregido',
+        'line' => 'El horario de la semana del :week, ya aprobado, ha sido corregido (versión :version). Revísalo y confirma que has visto el cambio.',
+        'action' => 'Revisar y confirmar',
+    ],
+
 ];

@@ -2,10 +2,11 @@
 
 namespace App\Modules\Staff\Http\Resources;
 
+use App\Modules\Staff\Models\EmploymentTerm;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/** @mixin \App\Modules\Staff\Models\EmploymentTerm */
+/** @mixin EmploymentTerm */
 class EmploymentTermResource extends JsonResource
 {
     /**
@@ -16,6 +17,7 @@ class EmploymentTermResource extends JsonResource
         return [
             'id' => $this->id,
             'max_weekly_hours' => $this->max_weekly_hours,
+            'min_weekly_hours' => $this->min_weekly_hours,
             'effective_from' => $this->effective_from?->toDateString(),
             'effective_to' => $this->effective_to?->toDateString(),
         ];

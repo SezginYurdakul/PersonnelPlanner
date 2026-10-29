@@ -7,6 +7,9 @@ use App\Models\User;
 use App\Modules\Staff\Contracts\EmployeeServiceContract;
 use App\Modules\Staff\Http\Requests\LinkUserRequest;
 use App\Modules\Staff\Http\Requests\StoreEmployeeRequest;
+use App\Modules\Staff\Http\Requests\SyncRoleExclusionsRequest;
+use App\Modules\Staff\Http\Requests\SyncUnavailabilityRequest;
+use App\Modules\Staff\Http\Requests\UpdateEmployeeNotesRequest;
 use App\Modules\Staff\Http\Requests\UpdateEmployeeRequest;
 use App\Modules\Staff\Http\Requests\UpdateEmploymentTermRequest;
 use App\Modules\Staff\Http\Resources\EmployeeResource;
@@ -40,7 +43,7 @@ class EmployeeController extends Controller
 
     public function show(Employee $employee): EmployeeResource
     {
-        $employee->load(['agency', 'currentEmploymentTerm', 'schedulingRoles']);
+        $employee->load(['agency', 'currentEmploymentTerm', 'schedulingRoles', 'unavailabilities', 'roleExclusions']);
 
         return new EmployeeResource($employee);
     }
@@ -56,6 +59,13 @@ class EmployeeController extends Controller
     public function destroy(Employee $employee): EmployeeResource
     {
         return new EmployeeResource($this->employees->deactivate($employee));
+    }
+
+    public function destroyPermanently(Employee $employee): Response
+    {
+        $this->employees->delete($employee);
+
+        return response()->noContent();
     }
 
     public function linkUser(LinkUserRequest $request, Employee $employee): EmployeeResource
@@ -78,5 +88,29 @@ class EmployeeController extends Controller
     public function updateEmploymentTerm(UpdateEmploymentTermRequest $request, Employee $employee): EmploymentTermResource
     {
         return new EmploymentTermResource($this->employees->updateEmploymentTerm($employee, $request->toDto()));
+    }
+
+    public function updateUnavailability(SyncUnavailabilityRequest $request, Employee $employee): EmployeeResource
+    {
+        $this->employees->syncUnavailability($employee, $request->unavailableSlots());
+        $employee->load(['agency', 'currentEmploymentTerm', 'schedulingRoles', 'unavailabilities', 'roleExclusions']);
+
+        return new EmployeeResource($employee);
+    }
+
+    public function updateRoleExclusions(SyncRoleExclusionsRequest $request, Employee $employee): EmployeeResource
+    {
+        $this->employees->syncRoleExclusions($employee, $request->schedulingRoleIds());
+        $employee->load(['agency', 'currentEmploymentTerm', 'schedulingRoles', 'unavailabilities', 'roleExclusions']);
+
+        return new EmployeeResource($employee);
+    }
+
+    public function updateNotes(UpdateEmployeeNotesRequest $request, Employee $employee): EmployeeResource
+    {
+        $employee = $this->employees->updateNotes($employee, $request->notes());
+        $employee->load(['agency', 'currentEmploymentTerm', 'schedulingRoles', 'unavailabilities', 'roleExclusions']);
+
+        return new EmployeeResource($employee);
     }
 }

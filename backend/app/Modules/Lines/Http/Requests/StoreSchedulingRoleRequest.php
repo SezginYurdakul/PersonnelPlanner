@@ -5,7 +5,6 @@ namespace App\Modules\Lines\Http\Requests;
 use App\Modules\Lines\DTOs\SchedulingRoleData;
 use App\Modules\Lines\Models\SchedulingRole;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
 class StoreSchedulingRoleRequest extends FormRequest
@@ -24,10 +23,13 @@ class StoreSchedulingRoleRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'line_id' => ['nullable', 'exists:lines,id'],
             'role_kind' => ['required', 'in:station,secondary_task'],
-            'requires_coverage' => ['sometimes', 'boolean', 'prohibited_if:role_kind,secondary_task'],
+            // A secondary task can require coverage too (e.g. a mandatory fault-response
+            // duty) - it's staffed from whoever already holds this shift, never a new hire,
+            // but going unfilled still blocks approval just like a mandatory station.
+            'requires_coverage' => ['sometimes', 'boolean'],
             'attachment_type' => [
                 'nullable',
-                'in:station,line,none',
+                'in:station,line,none,shift_lead,flexible',
                 'required_if:role_kind,secondary_task',
                 'prohibited_if:role_kind,station',
             ],
@@ -37,7 +39,10 @@ class StoreSchedulingRoleRequest extends FormRequest
                 'exists:scheduling_roles,id',
                 'required_if:attachment_type,station',
             ],
+            'allows_second_person' => ['sometimes', 'boolean'],
+            'min_headcount' => ['sometimes', 'integer', 'min:1', 'max:20'],
             'is_active' => ['sometimes', 'boolean'],
+            'fairness_weight' => ['sometimes', 'numeric', 'min:0.1', 'max:9.99'],
         ];
     }
 
@@ -77,7 +82,10 @@ class StoreSchedulingRoleRequest extends FormRequest
             requiresCoverage: $this->has('requires_coverage') ? $this->boolean('requires_coverage') : null,
             attachmentType: $this->string('attachment_type')->toString() ?: null,
             attachedStationRoleId: $this->input('attached_station_role_id'),
+            allowsSecondPerson: $this->has('allows_second_person') ? $this->boolean('allows_second_person') : null,
+            minHeadcount: $this->has('min_headcount') ? $this->integer('min_headcount') : null,
             isActive: $this->boolean('is_active', true),
+            fairnessWeight: $this->has('fairness_weight') ? (float) $this->input('fairness_weight') : 1.0,
         );
     }
 }

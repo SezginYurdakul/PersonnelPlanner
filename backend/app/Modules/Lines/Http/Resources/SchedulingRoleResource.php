@@ -2,10 +2,11 @@
 
 namespace App\Modules\Lines\Http\Resources;
 
+use App\Modules\Lines\Models\SchedulingRole;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/** @mixin \App\Modules\Lines\Models\SchedulingRole */
+/** @mixin SchedulingRole */
 class SchedulingRoleResource extends JsonResource
 {
     /**
@@ -21,6 +22,9 @@ class SchedulingRoleResource extends JsonResource
             'requires_coverage' => $this->requires_coverage,
             'attachment_type' => $this->attachment_type,
             'attached_station' => new self($this->whenLoaded('attachedStation')),
+            'allows_second_person' => $this->allows_second_person,
+            'min_headcount' => $this->min_headcount,
+            'fairness_weight' => $this->fairness_weight,
             'is_active' => $this->is_active,
         ];
     }

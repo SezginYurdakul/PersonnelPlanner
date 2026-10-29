@@ -2,19 +2,25 @@
 
 namespace App\Modules\Scheduling\RuleEngine\Rules;
 
-use App\Modules\Scheduling\Models\ShiftAssignment;
 use App\Modules\Scheduling\RuleEngine\Contracts\SchedulingRule;
 use App\Modules\Scheduling\RuleEngine\DTOs\EmployeeScheduleContext;
 use App\Modules\Scheduling\RuleEngine\ValueObjects\RuleResult;
-use Illuminate\Support\Carbon;
+use App\Modules\Scheduling\Services\EffectiveWorkedHoursCalculator;
 
 /**
  * The only enabled rule for the MVP (ProjectPlan.md §16.2): an employee's total assigned
  * hours for the week - existing assignments plus the candidate slot - must not exceed their
  * max_weekly_hours (default 40, overridable per employee via employment_terms).
+ *
+ * Existing assignments are counted via EffectiveWorkedHoursCalculator, which merges
+ * same-day overlapping assignments (a station shift plus one or more secondary tasks held
+ * during that same physical shift) into a single interval - otherwise each role held during
+ * one shift would count as a separate full shift's hours.
  */
 final class MaxWeeklyHoursRule implements SchedulingRule
 {
+    public function __construct(private readonly EffectiveWorkedHoursCalculator $hoursCalculator) {}
+
     public function key(): string
     {
         return 'max_weekly_hours';
@@ -22,14 +28,13 @@ final class MaxWeeklyHoursRule implements SchedulingRule
 
     public function evaluate(EmployeeScheduleContext $context): RuleResult
     {
-        $existingHours = $context->existingAssignmentsThisWeek
-            ->sum(fn (ShiftAssignment $assignment): float => $this->hoursFor(
-                $assignment->effectiveStart(),
-                $assignment->effectiveEnd(),
-                $assignment->effectiveCrossesMidnight(),
-            ));
+        $existingHours = $this->hoursCalculator->totalHours($context->existingAssignmentsThisWeek);
 
-        $candidateHours = $context->candidateStart->floatDiffInHours($context->candidateEnd);
+        $candidateHours = $this->hoursCalculator->marginalHoursForCandidate(
+            $context->existingAssignmentsThisWeek,
+            $context->candidateStart,
+            $context->candidateEnd,
+        );
 
         $totalHours = $existingHours + $candidateHours;
 
@@ -43,21 +48,5 @@ final class MaxWeeklyHoursRule implements SchedulingRule
             $this->key(),
             "Would exceed weekly hours by {$overBy}",
         );
-    }
-
-    private function hoursFor(?string $start, ?string $end, bool $crossesMidnight): float
-    {
-        if ($start === null || $end === null) {
-            return 0.0;
-        }
-
-        $startsAt = Carbon::parse($start);
-        $endsAt = Carbon::parse($end);
-
-        if ($crossesMidnight) {
-            $endsAt->addDay();
-        }
-
-        return $startsAt->floatDiffInHours($endsAt);
     }
 }

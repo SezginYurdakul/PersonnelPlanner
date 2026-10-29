@@ -2,6 +2,7 @@
 
 namespace App\Modules\Scheduling\Services;
 
+use App\Modules\CompanySettings\Models\CompanySetting;
 use App\Modules\Lines\Models\SchedulingRole;
 use App\Modules\Lines\Models\ShiftPattern;
 use App\Modules\Scheduling\Contracts\AlternativeCandidateServiceContract;
@@ -18,9 +19,10 @@ use Illuminate\Support\Collection;
  */
 final class AlternativeCandidateService implements AlternativeCandidateServiceContract
 {
-    public function __construct(private readonly SlotCandidateRanker $ranker)
-    {
-    }
+    public function __construct(
+        private readonly SlotCandidateRanker $ranker,
+        private readonly EmployeeFairnessScoreService $fairnessScores,
+    ) {}
 
     public function forSlot(
         Schedule $schedule,
@@ -29,23 +31,59 @@ final class AlternativeCandidateService implements AlternativeCandidateServiceCo
         Carbon $workDate,
         int $roleId,
         string $rankingMode,
+        ?string $startsAt = null,
+        ?string $endsAt = null,
     ): Collection {
         $role = SchedulingRole::query()->findOrFail($roleId);
         $shiftPattern = $shiftPatternId !== null ? ShiftPattern::query()->find($shiftPatternId) : null;
 
-        [$shiftStart, $shiftEnd] = $this->shiftTimeRange($workDate, $shiftPattern);
+        [$shiftStart, $shiftEnd] = $this->shiftTimeRange($workDate, $shiftPattern, $startsAt, $endsAt);
 
         $fairScores = $this->currentWeekFairScores($schedule);
 
-        return $this->ranker->rankAllForRole($role, $shiftStart, $shiftEnd, $rankingMode, $fairScores);
+        $ranked = $this->ranker->rankAllForRole($role, $shiftStart, $shiftEnd, $rankingMode, $fairScores, $shiftPattern?->slot_type);
+
+        // Whoever already holds this exact (line, shift, role, day) slot is never a
+        // meaningful "who else could go here?" answer - "Replace" shouldn't offer swapping
+        // someone for themselves, and "Add as extra" shouldn't be able to double-book the
+        // same person onto the same slot a second time.
+        $alreadyAssignedEmployeeIds = ShiftAssignment::query()
+            ->where('schedule_id', $schedule->id)
+            ->where('line_id', $lineId)
+            ->where('shift_pattern_id', $shiftPatternId)
+            ->where('work_date', $workDate->format('Y-m-d'))
+            ->where('role_id', $roleId)
+            ->pluck('employee_id');
+
+        return $ranked->reject(
+            fn (CandidateData $candidate) => $alreadyAssignedEmployeeIds->contains($candidate->employee->id)
+        )->values();
     }
 
     /**
      * @return array{0: Carbon, 1: Carbon}
      */
-    private function shiftTimeRange(Carbon $workDate, ?ShiftPattern $shiftPattern): array
+    private function shiftTimeRange(Carbon $workDate, ?ShiftPattern $shiftPattern, ?string $startsAt, ?string $endsAt): array
     {
         if ($shiftPattern === null) {
+            // A flexible/day-specific-hours role has no pattern to fall back on, so without
+            // $startsAt/$endsAt (the hours the admin has actually typed into the assignment
+            // form, or an existing assignment's stored hours) this used to always guess
+            // midnight-to-08:00. That fake window would collide with a DIFFERENT day's real
+            // flexible-hours assignment for the same employee via MinRestBetweenShiftsRule -
+            // e.g. a genuine 00:00-16:00 assignment yesterday made every candidate look like
+            // an 8h-rest violation today, hiding an otherwise perfectly valid candidate.
+            if ($startsAt !== null && $endsAt !== null) {
+                $start = Carbon::parse($workDate->format('Y-m-d').' '.$startsAt);
+                $end = Carbon::parse($workDate->format('Y-m-d').' '.$endsAt);
+
+                if ($end->lessThanOrEqualTo($start)) {
+                    $end->addDay();
+                }
+
+                return [$start, $end];
+            }
+
             return [$workDate->copy(), $workDate->copy()->addHours(8)];
         }
 
@@ -60,37 +98,31 @@ final class AlternativeCandidateService implements AlternativeCandidateServiceCo
     }
 
     /**
-     * Reconstructs the current per-employee hours-so-far tally for this schedule's week,
-     * so an on-demand alternative-candidates lookup ranks fairly against what has actually
-     * been assigned so far - not just what a single in-progress generate() pass tracked.
+     * The last 8 approved weeks' weighted hours per employee (ProjectPlan's confirmed
+     * cross-week fairness design), plus this schedule's own current weighted hours-so-far -
+     * so an on-demand alternative-candidates lookup ranks fairly against recent history AND
+     * what has actually been assigned so far this week, not just a single in-progress
+     * generate() pass.
      *
      * @return Collection<int, float>
      */
     private function currentWeekFairScores(Schedule $schedule): Collection
     {
-        return ShiftAssignment::query()
+        $companySetting = CompanySetting::current();
+        $recentScores = $this->fairnessScores->recentScoresByEmployee();
+
+        $thisWeekScores = ShiftAssignment::query()
             ->where('schedule_id', $schedule->id)
             ->with('shiftPattern')
             ->get()
             ->groupBy('employee_id')
-            ->map(function (Collection $assignments) {
-                return $assignments->sum(function (ShiftAssignment $assignment) {
-                    $start = $assignment->effectiveStart();
-                    $end = $assignment->effectiveEnd();
+            ->map(fn (Collection $assignments) => $this->fairnessScores->weightedHoursFor($assignments, $companySetting));
 
-                    if ($start === null || $end === null) {
-                        return 0.0;
-                    }
-
-                    $startsAt = Carbon::parse($start);
-                    $endsAt = Carbon::parse($end);
-
-                    if ($assignment->effectiveCrossesMidnight()) {
-                        $endsAt->addDay();
-                    }
-
-                    return $startsAt->floatDiffInHours($endsAt);
-                });
-            });
+        return $recentScores->keys()
+            ->merge($thisWeekScores->keys())
+            ->unique()
+            ->mapWithKeys(fn ($employeeId) => [
+                $employeeId => (float) $recentScores->get($employeeId, 0.0) + (float) $thisWeekScores->get($employeeId, 0.0),
+            ]);
     }
 }

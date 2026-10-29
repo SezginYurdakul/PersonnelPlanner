@@ -8,6 +8,7 @@ use App\Modules\Lines\Http\Requests\StoreLineRequest;
 use App\Modules\Lines\Http\Requests\UpdateLineRequest;
 use App\Modules\Lines\Http\Resources\LineResource;
 use App\Modules\Lines\Models\Line;
+use Illuminate\Http\Response;
 
 class LineController extends Controller
 {
@@ -38,5 +39,12 @@ class LineController extends Controller
     public function destroy(Line $line): LineResource
     {
         return new LineResource($this->lines->deactivate($line));
+    }
+
+    public function destroyPermanently(Line $line): Response
+    {
+        $this->lines->delete($line);
+
+        return response()->noContent();
     }
 }

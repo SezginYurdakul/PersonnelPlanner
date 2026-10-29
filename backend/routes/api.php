@@ -18,11 +18,13 @@ use App\Modules\Scheduling\Http\Controllers\AlternativeCandidateController;
 use App\Modules\Scheduling\Http\Controllers\EmployeeScheduleController;
 use App\Modules\Scheduling\Http\Controllers\ScheduleController;
 use App\Modules\Scheduling\Http\Controllers\ScheduleSuggestionController;
+use App\Modules\Scheduling\Http\Controllers\SelfServiceScheduleAcknowledgmentController;
 use App\Modules\Scheduling\Http\Controllers\ShiftAssignmentController;
 use App\Modules\ShiftNotices\Http\Controllers\SelfServiceShiftNoticeController;
 use App\Modules\ShiftNotices\Http\Controllers\ShiftNoticeController;
 use App\Modules\Staff\Http\Controllers\AgencyController;
 use App\Modules\Staff\Http\Controllers\EmployeeController;
+use App\Modules\Staff\Http\Controllers\SelfServiceProfileController;
 use App\Modules\TimeAttendance\Http\Controllers\TimeClockEntryController;
 use App\Modules\TimeAttendance\Http\Controllers\TimeClockImportController;
 use Illuminate\Support\Facades\Route;
@@ -44,21 +46,31 @@ Route::prefix('v1')->group(function () {
         // authenticated User, 403 if none linked), not via route middleware.
         Route::prefix('me')->group(function () {
             Route::get('/schedule', [EmployeeScheduleController::class, 'show']);
+            Route::get('/profile', [SelfServiceProfileController::class, 'show']);
             Route::get('/company-settings', [CompanySettingsController::class, 'showForEmployee']);
             Route::get('/leave-requests', [SelfServiceLeaveRequestController::class, 'index']);
             Route::post('/leave-requests', [SelfServiceLeaveRequestController::class, 'store']);
             Route::get('/shift-notices/eligibility', [SelfServiceShiftNoticeController::class, 'eligibility']);
             Route::post('/shift-notices', [SelfServiceShiftNoticeController::class, 'store']);
 
+            Route::get('/pending-acknowledgments', [SelfServiceScheduleAcknowledgmentController::class, 'index']);
+            Route::post('/schedules/{schedule}/acknowledge', [SelfServiceScheduleAcknowledgmentController::class, 'store']);
+
             Route::post('/push-subscriptions', [PushSubscriptionController::class, 'store']);
             Route::delete('/push-subscriptions/{pushSubscription}', [PushSubscriptionController::class, 'destroy']);
         });
 
-        Route::middleware('role:admin')->group(function () {
+        Route::middleware('role:admin|super_admin')->group(function () {
             Route::get('/dashboard/summary', [DashboardController::class, 'summary']);
+            Route::get('/dashboard/planning-calendar', [DashboardController::class, 'planningCalendar']);
 
             Route::get('/company-settings', [CompanySettingsController::class, 'show']);
             Route::put('/company-settings', [CompanySettingsController::class, 'update']);
+
+            Route::middleware('role:super_admin')->group(function () {
+                Route::put('/company-settings/fairness-weights', [CompanySettingsController::class, 'updateFairnessWeights']);
+                Route::put('/company-settings/planner', [CompanySettingsController::class, 'updatePlannerSettings']);
+            });
 
             Route::get('/users', [UserController::class, 'index']);
             Route::put('/users/{user}/visibility-scope', [UserController::class, 'updateVisibilityScope']);
@@ -68,14 +80,20 @@ Route::prefix('v1')->group(function () {
             Route::apiResource('agencies', AgencyController::class);
 
             Route::apiResource('employees', EmployeeController::class);
+            Route::delete('/employees/{employee}/permanent', [EmployeeController::class, 'destroyPermanently']);
             Route::put('/employees/{employee}/user', [EmployeeController::class, 'linkUser']);
             Route::delete('/employees/{employee}/user', [EmployeeController::class, 'unlinkUser']);
             Route::get('/employees/{employee}/employment-terms', [EmployeeController::class, 'showEmploymentTerm']);
             Route::put('/employees/{employee}/employment-terms', [EmployeeController::class, 'updateEmploymentTerm']);
             Route::put('/employees/{employee}/qualified-roles', [SchedulingRoleController::class, 'syncQualifications']);
+            Route::put('/employees/{employee}/unavailability', [EmployeeController::class, 'updateUnavailability']);
+            Route::put('/employees/{employee}/role-exclusions', [EmployeeController::class, 'updateRoleExclusions']);
+            Route::put('/employees/{employee}/notes', [EmployeeController::class, 'updateNotes']);
 
             Route::apiResource('lines', LineController::class);
+            Route::delete('/lines/{line}/permanent', [LineController::class, 'destroyPermanently']);
             Route::apiResource('roles', SchedulingRoleController::class)->parameters(['roles' => 'scheduling_role']);
+            Route::delete('/roles/{scheduling_role}/permanent', [SchedulingRoleController::class, 'destroyPermanently']);
             Route::apiResource('shift-patterns', ShiftPatternController::class)->parameters(['shift-patterns' => 'shift_pattern']);
             Route::apiResource('shift-pattern-groups', ShiftPatternGroupController::class)
                 ->parameters(['shift-pattern-groups' => 'shift_pattern_group']);
@@ -92,8 +110,16 @@ Route::prefix('v1')->group(function () {
 
             Route::apiResource('schedules', ScheduleController::class);
             Route::post('/schedules/suggest', [ScheduleSuggestionController::class, 'store']);
-            Route::post('/schedules/{schedule}/approve', [ScheduleController::class, 'approve']);
+            Route::get('/schedules/suggest/{run}', [ScheduleSuggestionController::class, 'show'])->whereUuid('run');
+            Route::post('/schedules/{schedule}/submit', [ScheduleController::class, 'submit']);
             Route::get('/schedules/{schedule}/alternative-candidates', [AlternativeCandidateController::class, 'index']);
+            Route::get('/schedules/{schedule}/acknowledgments', [ScheduleController::class, 'acknowledgments']);
+
+            Route::middleware('role:super_admin')->group(function () {
+                Route::post('/schedules/{schedule}/approve', [ScheduleController::class, 'approve']);
+                Route::post('/schedules/{schedule}/reject', [ScheduleController::class, 'reject']);
+                Route::post('/schedules/{schedule}/unlock', [ScheduleController::class, 'unlock']);
+            });
 
             Route::apiResource('shift-assignments', ShiftAssignmentController::class)
                 ->parameters(['shift-assignments' => 'shift_assignment'])

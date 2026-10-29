@@ -27,6 +27,10 @@ class GenerateSuggestionRequest extends FormRequest
             'role_ids' => ['nullable', 'array'],
             'role_ids.*' => ['integer', 'exists:scheduling_roles,id'],
             'ranking_mode' => ['required', 'in:fair,cost'],
+            'line_slot_exclusions' => ['nullable', 'array'],
+            'line_slot_exclusions.*.line_id' => ['required', 'integer', 'in:'.implode(',', $this->input('line_ids', []))],
+            'line_slot_exclusions.*.day_of_week' => ['required', 'integer', 'between:1,7'],
+            'line_slot_exclusions.*.slot_type' => ['required', 'string', 'in:day,afternoon,night'],
         ];
     }
 
@@ -40,6 +44,7 @@ class GenerateSuggestionRequest extends FormRequest
             rankingMode: $this->string('ranking_mode')->toString(),
             requestedBy: $this->user()->id,
             scheduleId: $this->input('schedule_id'),
+            lineSlotExclusions: $this->input('line_slot_exclusions'),
         );
     }
 }

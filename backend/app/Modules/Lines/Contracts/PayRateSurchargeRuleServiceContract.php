@@ -24,7 +24,10 @@ interface PayRateSurchargeRuleServiceContract
      * Computes the effective cost of a shift instance given a base hourly rate,
      * by splitting the shift into segments against all active surcharge rules and
      * applying the single highest overlapping surcharge percentage to each segment
-     * (ProjectPlan.md §11.2c - surcharges do not stack).
+     * (ProjectPlan.md §11.2c - surcharges do not stack). $rules, when given, are the active
+     * rules already loaded, for callers pricing many shifts at once.
+     *
+     * @param  ?Collection<int, PayRateSurchargeRule>  $rules
      */
-    public function computeShiftCost(float $baseHourlyRate, Carbon $shiftStart, Carbon $shiftEnd): float;
+    public function computeShiftCost(float $baseHourlyRate, Carbon $shiftStart, Carbon $shiftEnd, ?Collection $rules = null): float;
 }

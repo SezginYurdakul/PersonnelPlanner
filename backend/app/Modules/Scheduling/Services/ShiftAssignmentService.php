@@ -31,6 +31,8 @@ final class ShiftAssignmentService implements ShiftAssignmentServiceContract
 
     public function create(Schedule $schedule, ShiftAssignmentData $data): array
     {
+        $this->assertScheduleIsEditable($schedule);
+
         $employee = Employee::query()->findOrFail($data->employeeId);
         $role = $data->roleId !== null ? SchedulingRole::query()->findOrFail($data->roleId) : null;
 
@@ -42,7 +44,9 @@ final class ShiftAssignmentService implements ShiftAssignmentServiceContract
 
         if ($role?->isStation()) {
             $this->assertNoStationOverlap($employee, $data->workDate, $start, $end, $crossesMidnight, null);
-        } elseif ($role?->isSecondaryTask()) {
+        } elseif ($role?->attachment_type === 'flexible') {
+            $this->assertNoFlexibleOverlap($employee, $data->workDate, $start, $end, null);
+        } elseif ($role?->isSecondaryTask() && ! in_array($role->attachment_type, ['line', 'shift_lead', 'flexible'], true)) {
             $this->assertSecondaryTaskHasStation($employee, $schedule, $data->workDate, $start, $end);
         }
 
@@ -58,6 +62,8 @@ final class ShiftAssignmentService implements ShiftAssignmentServiceContract
 
     public function update(ShiftAssignment $assignment, ShiftAssignmentData $data): array
     {
+        $this->assertScheduleIsEditable($assignment->schedule);
+
         $employee = Employee::query()->findOrFail($data->employeeId);
         $role = $data->roleId !== null ? SchedulingRole::query()->findOrFail($data->roleId) : null;
 
@@ -72,7 +78,9 @@ final class ShiftAssignmentService implements ShiftAssignmentServiceContract
                 false,
                 $assignment->id,
             );
-        } elseif ($role?->isSecondaryTask()) {
+        } elseif ($role?->attachment_type === 'flexible') {
+            $this->assertNoFlexibleOverlap($employee, $data->workDate, $data->startsAt, $data->endsAt, $assignment->id);
+        } elseif ($role?->isSecondaryTask() && ! in_array($role->attachment_type, ['line', 'shift_lead', 'flexible'], true)) {
             $this->assertSecondaryTaskHasStation($employee, $assignment->schedule, $data->workDate, $data->startsAt, $data->endsAt);
         }
 
@@ -84,6 +92,8 @@ final class ShiftAssignmentService implements ShiftAssignmentServiceContract
 
     public function move(ShiftAssignment $assignment, MoveAssignmentData $data): array
     {
+        $this->assertScheduleIsEditable($assignment->schedule);
+
         $role = $assignment->role;
 
         $this->assertRoleLineConsistency($data->lineId, $role);
@@ -97,7 +107,15 @@ final class ShiftAssignmentService implements ShiftAssignmentServiceContract
                 $assignment->effectiveCrossesMidnight(),
                 $assignment->id,
             );
-        } elseif ($role?->isSecondaryTask()) {
+        } elseif ($role?->attachment_type === 'flexible') {
+            $this->assertNoFlexibleOverlap(
+                $assignment->employee,
+                Carbon::parse($data->workDate),
+                $assignment->starts_at,
+                $assignment->ends_at,
+                $assignment->id,
+            );
+        } elseif ($role?->isSecondaryTask() && ! in_array($role->attachment_type, ['line', 'shift_lead', 'flexible'], true)) {
             $this->assertSecondaryTaskHasStation(
                 $assignment->employee,
                 $assignment->schedule,
@@ -120,11 +138,27 @@ final class ShiftAssignmentService implements ShiftAssignmentServiceContract
 
     public function delete(ShiftAssignment $assignment): void
     {
+        $this->assertScheduleIsEditable($assignment->schedule);
+
         // Capture employee/approved-state before the row is removed - both are gone from
         // the model afterward (ProjectPlan.md §8h's dispatch-hook note on delete()).
         $this->notifications->notifyAssignmentChanged($assignment);
 
         $assignment->delete();
+    }
+
+    /**
+     * Manual drag-and-drop editing is only ever allowed on a draft schedule - locked while
+     * `proposed` (awaiting super_admin review) or `approved` (a super_admin must unlock it
+     * back to draft first, per the approved-plan review policy).
+     */
+    private function assertScheduleIsEditable(Schedule $schedule): void
+    {
+        if (! $schedule->isEditableByAdmin()) {
+            throw ValidationException::withMessages([
+                'schedule' => 'This schedule is locked and cannot be edited in its current status.',
+            ]);
+        }
     }
 
     /**
@@ -217,6 +251,39 @@ final class ShiftAssignmentService implements ShiftAssignmentServiceContract
         }
     }
 
+    /**
+     * A flexible-hours role (e.g. Production Lead) works arbitrary, day-specific hours with
+     * no fixed shift pattern - its only overlap concern is against ANOTHER flexible
+     * assignment for the same employee/day (two conflicting free time ranges), never
+     * against a station: a Production Lead's flexible hours are allowed to coexist with a
+     * station shift on the same day without conflict, per the confirmed design.
+     */
+    private function assertNoFlexibleOverlap(
+        Employee $employee,
+        Carbon|string $workDate,
+        ?string $start,
+        ?string $end,
+        ?int $excludingAssignmentId,
+    ): void {
+        $workDate = $workDate instanceof Carbon ? $workDate->format('Y-m-d') : $workDate;
+
+        $candidates = ShiftAssignment::query()
+            ->where('employee_id', $employee->id)
+            ->where('work_date', $workDate)
+            ->when($excludingAssignmentId, fn ($q) => $q->where('id', '!=', $excludingAssignmentId))
+            ->whereHas('role', fn ($q) => $q->where('attachment_type', 'flexible'))
+            ->with(['shiftPattern', 'role'])
+            ->get();
+
+        foreach ($candidates as $candidate) {
+            if ($start !== null && $end !== null && $candidate->overlapsTimeRange($start, $end, false)) {
+                throw ValidationException::withMessages([
+                    'employee_id' => 'This employee already holds an overlapping flexible-hours assignment on this day.',
+                ]);
+            }
+        }
+    }
+
     private function assertSecondaryTaskHasStation(
         Employee $employee,
         Schedule $schedule,
@@ -230,7 +297,14 @@ final class ShiftAssignmentService implements ShiftAssignmentServiceContract
             ->where('schedule_id', $schedule->id)
             ->where('employee_id', $employee->id)
             ->where('work_date', $workDate)
-            ->whereHas('role', fn ($q) => $q->where('role_kind', SchedulingRole::KIND_STATION))
+            // A Shift Lead placement (attachment_type=shift_lead) counts as "present this
+            // shift" the same way a station assignment does - a shift lead is never given a
+            // station, so requiring one here would make them permanently ineligible for
+            // every other line-independent/line-attached secondary task (e.g. "Silo
+            // Takibi") despite decision #6 confirming they should be a normal candidate for
+            // those once placed.
+            ->whereHas('role', fn ($q) => $q->where('role_kind', SchedulingRole::KIND_STATION)
+                ->orWhere('attachment_type', 'shift_lead'))
             ->with('shiftPattern')
             ->get();
 

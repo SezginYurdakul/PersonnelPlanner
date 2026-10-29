@@ -52,6 +52,10 @@ class StoreShiftAssignmentRequest extends FormRequest
             if ($role && $role->line_id !== null && (int) $this->input('line_id') !== $role->line_id) {
                 $validator->errors()->add('role_id', 'This role belongs to a different line than the assignment.');
             }
+
+            if ($role && $role->attachment_type === 'flexible' && (! $this->filled('starts_at') || ! $this->filled('ends_at'))) {
+                $validator->errors()->add('starts_at', 'This role requires a start and end time.');
+            }
         });
     }
 

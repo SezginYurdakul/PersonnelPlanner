@@ -35,6 +35,7 @@ class StoreEmployeeRequest extends FormRequest
             'contracted_hours_per_week' => ['required_if:pay_type,monthly', 'nullable', 'numeric', 'min:0', 'max:168'],
             'default_line_id' => ['nullable', 'integer'],
             'is_active' => ['sometimes', 'boolean'],
+            'is_shift_lead' => ['sometimes', 'boolean'],
         ];
     }
 
@@ -64,6 +65,7 @@ class StoreEmployeeRequest extends FormRequest
             contractedHoursPerWeek: $this->has('contracted_hours_per_week') ? (float) $this->input('contracted_hours_per_week') : null,
             defaultLineId: $this->input('default_line_id'),
             isActive: $this->boolean('is_active', true),
+            isShiftLead: $this->boolean('is_shift_lead'),
         );
     }
 }

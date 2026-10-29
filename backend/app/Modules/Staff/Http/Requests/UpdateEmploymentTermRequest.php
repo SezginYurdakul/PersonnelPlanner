@@ -20,6 +20,7 @@ class UpdateEmploymentTermRequest extends FormRequest
     {
         return [
             'max_weekly_hours' => ['required', 'integer', 'min:1', 'max:168'],
+            'min_weekly_hours' => ['nullable', 'integer', 'min:0', 'max:168', 'lte:max_weekly_hours'],
             'effective_from' => ['required', 'date'],
         ];
     }
@@ -29,6 +30,7 @@ class UpdateEmploymentTermRequest extends FormRequest
         return new EmploymentTermData(
             maxWeeklyHours: (int) $this->input('max_weekly_hours'),
             effectiveFrom: Carbon::parse($this->string('effective_from')->toString()),
+            minWeeklyHours: $this->has('min_weekly_hours') ? (int) $this->input('min_weekly_hours') : null,
         );
     }
 }

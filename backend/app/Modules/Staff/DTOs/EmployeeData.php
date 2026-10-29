@@ -17,6 +17,7 @@ final readonly class EmployeeData
         public ?float $contractedHoursPerWeek = null,
         public ?int $defaultLineId = null,
         public bool $isActive = true,
+        public bool $isShiftLead = false,
     ) {}
 
     /**
@@ -37,6 +38,7 @@ final readonly class EmployeeData
             'contracted_hours_per_week' => $this->contractedHoursPerWeek,
             'default_line_id' => $this->defaultLineId,
             'is_active' => $this->isActive,
+            'is_shift_lead' => $this->isShiftLead,
         ];
     }
 }

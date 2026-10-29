@@ -37,9 +37,9 @@ final class PayRateSurchargeRuleService implements PayRateSurchargeRuleServiceCo
         return $rule->refresh();
     }
 
-    public function computeShiftCost(float $baseHourlyRate, Carbon $shiftStart, Carbon $shiftEnd): float
+    public function computeShiftCost(float $baseHourlyRate, Carbon $shiftStart, Carbon $shiftEnd, ?Collection $rules = null): float
     {
-        $rules = PayRateSurchargeRule::query()->where('is_active', true)->get();
+        $rules ??= PayRateSurchargeRule::query()->where('is_active', true)->get();
 
         // Build the set of minute-offsets (relative to shift start) where any rule's
         // window begins or ends within the shift - these are the only points where the

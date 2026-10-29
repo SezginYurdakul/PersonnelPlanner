@@ -31,10 +31,21 @@ class EmployeeScheduleDayResource extends JsonResource
             'line' => $this->line ? [
                 'id' => $this->line->id,
                 'name' => $this->line->name,
+                'code' => $this->line->code,
             ] : null,
             'role' => $this->role ? [
                 'id' => $this->role->id,
                 'name' => $this->role->name,
+                'role_kind' => $this->role->role_kind,
+                // Lets the frontend pick out shift-lead assignments (attachment_type ===
+                // 'shift_lead') when showing "who's leading this shift" on a coworker's
+                // calendar day, the same way ShiftAssignmentResource exposes it to the
+                // admin grid.
+                'attachment_type' => $this->role->attachment_type,
+            ] : null,
+            'shift_pattern' => $this->shiftPattern ? [
+                'id' => $this->shiftPattern->id,
+                'slot_type' => $this->shiftPattern->slot_type,
             ] : null,
             'starts_at' => $this->effectiveStart(),
             'ends_at' => $this->effectiveEnd(),

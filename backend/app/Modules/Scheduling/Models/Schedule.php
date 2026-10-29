@@ -19,6 +19,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'approved_by',
     'approved_at',
     'generated_scope',
+    'was_approved_before',
+    'version',
+    'rejection_note',
 ])]
 class Schedule extends Model
 {
@@ -37,6 +40,8 @@ class Schedule extends Model
             'week_start_date' => 'date',
             'approved_at' => 'datetime',
             'generated_scope' => 'array',
+            'was_approved_before' => 'boolean',
+            'version' => 'integer',
         ];
     }
 
@@ -64,8 +69,40 @@ class Schedule extends Model
         return $this->hasMany(ShiftAssignment::class);
     }
 
+    /**
+     * @return HasMany<ScheduleStatusEvent, $this>
+     */
+    public function statusEvents(): HasMany
+    {
+        return $this->hasMany(ScheduleStatusEvent::class)->latest('created_at');
+    }
+
     public function isApproved(): bool
     {
         return $this->status === self::STATUS_APPROVED;
+    }
+
+    public function isProposed(): bool
+    {
+        return $this->status === self::STATUS_PROPOSED;
+    }
+
+    /**
+     * A schedule that was ever approved (even if later unlocked back to draft) can never
+     * again be regenerated via "Generate Suggestion" - only manual drag-and-drop editing.
+     */
+    public function canBeGenerated(): bool
+    {
+        return ! $this->was_approved_before;
+    }
+
+    /**
+     * Only a draft schedule that has never been approved may be edited freely by an admin.
+     * A proposed (submitted for review) or approved schedule is locked to admins; a
+     * super_admin unlocks an approved one back to draft before it can be edited again.
+     */
+    public function isEditableByAdmin(): bool
+    {
+        return $this->status === self::STATUS_DRAFT;
     }
 }

@@ -22,6 +22,14 @@ interface SchedulingRoleServiceContract
     public function deactivate(SchedulingRole $role): SchedulingRole;
 
     /**
+     * Permanently removes this role, but only when no operational history (shift
+     * assignments) references it - config-only rows (qualifications, exclusions,
+     * attached secondary tasks) are simply cascaded away since they describe how to
+     * schedule this role, not a historical record of what happened.
+     */
+    public function delete(SchedulingRole $role): void;
+
+    /**
      * Replace an employee's full set of qualified roles (ProjectPlan.md §11a.3).
      *
      * @param  array<int>  $roleIds

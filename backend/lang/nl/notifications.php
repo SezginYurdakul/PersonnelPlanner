@@ -14,4 +14,10 @@ return [
         'action' => 'Bekijk je rooster',
     ],
 
+    'schedule_corrected' => [
+        'subject' => 'Je goedgekeurde rooster is gecorrigeerd',
+        'line' => 'Het rooster voor de week van :week, al goedgekeurd, is gecorrigeerd (versie :version). Bekijk het en bevestig dat je de wijziging hebt gezien.',
+        'action' => 'Bekijken en bevestigen',
+    ],
+
 ];

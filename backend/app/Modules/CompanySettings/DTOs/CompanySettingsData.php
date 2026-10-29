@@ -8,8 +8,8 @@ final readonly class CompanySettingsData
         public int $annualLeaveMinNoticeDays,
         public int $shiftNoticeMinNoticeHours,
         public ?string $emergencyContactPhone,
-    ) {
-    }
+        public string $weekStartDay,
+    ) {}
 
     /**
      * @return array<string, mixed>
@@ -20,6 +20,7 @@ final readonly class CompanySettingsData
             'annual_leave_min_notice_days' => $this->annualLeaveMinNoticeDays,
             'shift_notice_min_notice_hours' => $this->shiftNoticeMinNoticeHours,
             'emergency_contact_phone' => $this->emergencyContactPhone,
+            'week_start_day' => $this->weekStartDay,
         ];
     }
 }

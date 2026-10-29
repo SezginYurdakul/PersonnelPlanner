@@ -6,10 +6,13 @@ use App\Models\User;
 use App\Modules\Leave\Contracts\LeaveRequestServiceContract;
 use App\Modules\Leave\DTOs\LeaveRequestData;
 use App\Modules\Leave\Models\LeaveRequest;
+use App\Modules\Leave\Models\LeaveType;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
 final class LeaveRequestService implements LeaveRequestServiceContract
 {
+    public function __construct(private readonly AnnualLeaveScheduleConflictChecker $scheduleConflictChecker) {}
+
     /**
      * @param  array<string, mixed>  $filters
      * @return LengthAwarePaginator<int, LeaveRequest>
@@ -39,6 +42,12 @@ final class LeaveRequestService implements LeaveRequestServiceContract
 
     public function create(LeaveRequestData $data): LeaveRequest
     {
+        $leaveType = LeaveType::findOrFail($data->leaveTypeId);
+
+        if ($leaveType->slug === LeaveType::SLUG_VAKANTIE) {
+            $this->scheduleConflictChecker->assertNoApprovedScheduleConflict($data->startDate, $data->endDate);
+        }
+
         return LeaveRequest::create($data->toArray())->refresh();
     }
 

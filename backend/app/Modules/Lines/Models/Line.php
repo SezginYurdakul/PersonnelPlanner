@@ -2,6 +2,7 @@
 
 namespace App\Modules\Lines\Models;
 
+use App\Modules\Scheduling\Models\ShiftAssignment;
 use App\Modules\Staff\Models\Employee;
 use Database\Factories\LineFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -37,6 +38,32 @@ class Line extends Model
     public function defaultEmployees(): HasMany
     {
         return $this->hasMany(Employee::class, 'default_line_id');
+    }
+
+    /**
+     * @return HasMany<ShiftAssignment, $this>
+     */
+    public function shiftAssignments(): HasMany
+    {
+        return $this->hasMany(ShiftAssignment::class);
+    }
+
+    /**
+     * Day/shift combinations this line does NOT operate - absence of a row means open (see
+     * LineOperatingClosure's docblock).
+     *
+     * @return HasMany<LineOperatingClosure, $this>
+     */
+    public function operatingClosures(): HasMany
+    {
+        return $this->hasMany(LineOperatingClosure::class);
+    }
+
+    public function isClosedOn(int $isoDayOfWeek, string $slotType): bool
+    {
+        return $this->operatingClosures->contains(
+            fn (LineOperatingClosure $c) => $c->day_of_week === $isoDayOfWeek && $c->slot_type === $slotType
+        );
     }
 
     /**

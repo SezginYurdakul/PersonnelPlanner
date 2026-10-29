@@ -6,6 +6,7 @@ use App\Modules\Lines\Contracts\LineServiceContract;
 use App\Modules\Lines\DTOs\LineData;
 use App\Modules\Lines\Models\Line;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Validation\ValidationException;
 
 final class LineService implements LineServiceContract
 {
@@ -34,5 +35,16 @@ final class LineService implements LineServiceContract
         $line->update(['is_active' => false]);
 
         return $line->refresh();
+    }
+
+    public function delete(Line $line): void
+    {
+        if ($line->shiftAssignments()->exists()) {
+            throw ValidationException::withMessages([
+                'line' => __('lines.has_operational_history'),
+            ]);
+        }
+
+        $line->delete();
     }
 }
