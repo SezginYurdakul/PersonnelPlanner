@@ -1,0 +1,9 @@
+[project]
+name = "roster-planner"
+version = "0.1.0"
+description = "CP-SAT roster solver for PersonnelPlanner"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

@@ -8,6 +8,8 @@ services:
     volumes:
       - ./backend:/var/www/html
     working_dir: /var/www/html
+    environment:
+      PLANNER_URL: http://planner:8000
     depends_on:
       - postgres
       - redis
@@ -36,6 +38,8 @@ services:
       - ./backend:/var/www/html
     working_dir: /var/www/html
     command: php artisan queue:work --sleep=3 --tries=3
+    environment:
+      PLANNER_URL: http://planner:8000
     depends_on:
       - postgres
       - redis
@@ -59,6 +63,25 @@ services:
     image: redis:7-alpine
     ports:
       - "63790:6379"
+    networks:
+      - personnelplanner
+
+  # CP-SAT roster solver (ProjectPlan §28). Internal only: the backend calls http://planner:8000.
+  planner:
+    build:
+      context: ./planner
+      dockerfile: ../docker/planner/Dockerfile
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+        DEV_DEPENDENCIES: "true"
+    volumes:
+      - ./planner:/app
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     networks:
       - personnelplanner
 

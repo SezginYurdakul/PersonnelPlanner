@@ -1,0 +1,4 @@
+**/__pycache__
+.pytest_cache
+# Mounted from ./planner in development; production needs only the solver.
+tests
