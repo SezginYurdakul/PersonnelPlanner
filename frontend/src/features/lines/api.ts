@@ -38,6 +38,10 @@ export async function deactivateLine(id: number): Promise<Line> {
   return data.data;
 }
 
+export async function deleteLinePermanently(id: number): Promise<void> {
+  await apiClient.delete(`/lines/${id}/permanent`);
+}
+
 // Scheduling roles
 
 export interface RoleFilters {
@@ -64,6 +68,10 @@ export async function updateRole(id: number, payload: SchedulingRoleFormValues):
 export async function deactivateRole(id: number): Promise<SchedulingRole> {
   const { data } = await apiClient.delete<ApiEnvelope<SchedulingRole>>(`/roles/${id}`);
   return data.data;
+}
+
+export async function deleteRolePermanently(id: number): Promise<void> {
+  await apiClient.delete(`/roles/${id}/permanent`);
 }
 
 export async function syncEmployeeQualifications(

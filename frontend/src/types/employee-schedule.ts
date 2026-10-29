@@ -1,4 +1,5 @@
 import type { VisibilityScope } from './auth';
+import type { SlotType } from './lines';
 
 export interface EmployeeScheduleAssignment {
   id: number;
@@ -8,8 +9,9 @@ export interface EmployeeScheduleAssignment {
     first_name: string | null;
     last_name: string | null;
   };
-  line: { id: number; name: string } | null;
-  role: { id: number; name: string } | null;
+  line: { id: number; name: string; code: string } | null;
+  role: { id: number; name: string; role_kind: string; attachment_type: string | null } | null;
+  shift_pattern: { id: number; slot_type: SlotType } | null;
   starts_at: string | null;
   ends_at: string | null;
   crosses_midnight: boolean;
@@ -29,6 +31,7 @@ export interface EmployeeScheduleShiftNotice {
 
 export interface EmployeeSchedule {
   week_start_date: string;
+  range_end_date: string;
   visibility_scope: VisibilityScope;
   assignments: EmployeeScheduleAssignment[];
   leave_days: EmployeeScheduleLeaveDay[];

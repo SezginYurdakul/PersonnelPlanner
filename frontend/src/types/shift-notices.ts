@@ -9,10 +9,29 @@ export interface ShiftNoticeEligibility {
 
 export interface ShiftNotice {
   id: number;
+  employee: {
+    id: number;
+    first_name: string;
+    last_name: string;
+  } | null;
+  shift_assignment: {
+    id: number;
+    work_date: string;
+    line: { id: number; name: string } | null;
+    shift_pattern: { id: number; name: string } | null;
+  } | null;
   type: ShiftNoticeType;
   delay_minutes: number | null;
   note: string | null;
   status: ShiftNoticeStatus;
+  acknowledged_by: number | null;
+  acknowledged_at: string | null;
+}
+
+export interface ShiftNoticeFilters {
+  status?: ShiftNoticeStatus;
+  type?: ShiftNoticeType;
+  employee_id?: number;
 }
 
 export interface StoreShiftNoticeFormValues {

@@ -5,10 +5,14 @@ import { useState } from 'react';
 import { AppLayout } from '../components/layout/AppLayout';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import { Badge } from '../components/ui/Badge';
 import { LinkAccountPanel } from '../features/staff/LinkAccountPanel';
 import { EmploymentTermPanel } from '../features/staff/EmploymentTermPanel';
 import { EmployeeFormModal } from '../features/staff/EmployeeFormModal';
 import { QualifiedRolesPanel } from '../features/lines/QualifiedRolesPanel';
+import { EmployeeRoleExclusionsPanel } from '../features/staff/EmployeeRoleExclusionsPanel';
+import { EmployeeAvailabilityPanel } from '../features/staff/EmployeeAvailabilityPanel';
+import { EmployeeNotesPanel } from '../features/staff/EmployeeNotesPanel';
 import { fetchEmployee, updateEmployee } from '../features/staff/api';
 import type { EmployeeFormValues } from '../types/staff';
 
@@ -44,9 +48,12 @@ export function EmployeeDetailPage() {
       </Link>
 
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-slate-900">
-          {employee.first_name} {employee.last_name}
-        </h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-semibold text-slate-900">
+            {employee.first_name} {employee.last_name}
+          </h1>
+          {employee.is_shift_lead && <Badge tone="info">{t('staff.is_shift_lead')}</Badge>}
+        </div>
         <Button variant="secondary" onClick={() => setIsEditing(true)}>
           {t('common.edit')}
         </Button>
@@ -87,6 +94,18 @@ export function EmployeeDetailPage() {
 
         <Card>
           <QualifiedRolesPanel employee={employee} qualifiedRoleIds={employee.qualified_role_ids} />
+        </Card>
+
+        <Card>
+          <EmployeeRoleExclusionsPanel employee={employee} />
+        </Card>
+
+        <Card>
+          <EmployeeAvailabilityPanel employee={employee} />
+        </Card>
+
+        <Card>
+          <EmployeeNotesPanel employee={employee} />
         </Card>
       </div>
 

@@ -1,9 +1,28 @@
 import { apiClient } from '../../api/client';
-import type { ShiftNotice, ShiftNoticeEligibility, StoreShiftNoticeFormValues } from '../../types/shift-notices';
+import type {
+  ShiftNotice,
+  ShiftNoticeEligibility,
+  ShiftNoticeFilters,
+  StoreShiftNoticeFormValues,
+} from '../../types/shift-notices';
 
 interface ApiEnvelope<T> {
   data: T;
 }
+
+// Admin
+
+export async function fetchShiftNotices(filters: ShiftNoticeFilters = {}): Promise<ShiftNotice[]> {
+  const { data } = await apiClient.get<ApiEnvelope<ShiftNotice[]>>('/shift-notices', { params: filters });
+  return data.data;
+}
+
+export async function acknowledgeShiftNotice(id: number): Promise<ShiftNotice> {
+  const { data } = await apiClient.post<ApiEnvelope<ShiftNotice>>(`/shift-notices/${id}/acknowledge`);
+  return data.data;
+}
+
+// Self-service
 
 export async function fetchShiftNoticeEligibility(shiftAssignmentId: number): Promise<ShiftNoticeEligibility> {
   const { data } = await apiClient.get<ShiftNoticeEligibility>('/me/shift-notices/eligibility', {

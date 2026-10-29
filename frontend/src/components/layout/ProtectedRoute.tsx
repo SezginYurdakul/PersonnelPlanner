@@ -6,10 +6,11 @@ import { useAuth } from '../../features/auth/AuthContext';
 interface ProtectedRouteProps {
   children: ReactNode;
   /**
-   * Restricts this route to accounts holding the `admin` role. A `user`-only account
-   * (no `admin` role) is redirected to its own `/me` surface instead of rendering the
-   * admin page - the admin panel and its API calls are never reachable by a plain
-   * employee account (ProjectPlan.md §8b.4).
+   * Restricts this route to accounts holding the `admin` or `super_admin` role. A
+   * `user`-only account (neither role) is redirected to its own `/me` surface instead of
+   * rendering the admin page - the admin panel and its API calls are never reachable by a
+   * plain employee account (ProjectPlan.md §8b.4). `super_admin` is a superset of `admin`
+   * (full admin access, plus the sole authority to approve/reject/unlock a schedule).
    */
   adminOnly?: boolean;
 }
@@ -30,8 +31,8 @@ export function ProtectedRoute({ children, adminOnly = false }: ProtectedRoutePr
     return <Navigate to="/login" replace />;
   }
 
-  if (adminOnly && !user.roles.includes('admin')) {
-    return <Navigate to="/me/schedule" replace />;
+  if (adminOnly && !user.roles.includes('admin') && !user.roles.includes('super_admin')) {
+    return <Navigate to="/me/dashboard" replace />;
   }
 
   return <>{children}</>;

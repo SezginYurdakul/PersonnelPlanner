@@ -5,6 +5,7 @@ import type {
   Employee,
   EmployeeFormValues,
   EmploymentTerm,
+  UnavailableSlot,
 } from '../../types/staff';
 import type { AuthUser } from '../../types/auth';
 
@@ -73,6 +74,28 @@ export async function deactivateEmployee(id: number): Promise<Employee> {
   return data.data;
 }
 
+export async function deleteEmployeePermanently(id: number): Promise<void> {
+  await apiClient.delete(`/employees/${id}/permanent`);
+}
+
+export async function activateEmployee(employee: Employee): Promise<Employee> {
+  return updateEmployee(employee.id, {
+    first_name: employee.first_name,
+    last_name: employee.last_name,
+    phone: employee.phone ?? undefined,
+    email: employee.email ?? undefined,
+    employee_type: employee.employee_type,
+    agency_id: employee.agency?.id ?? null,
+    pay_type: employee.pay_type,
+    hourly_rate: employee.hourly_rate !== null ? Number(employee.hourly_rate) : null,
+    monthly_salary: employee.monthly_salary !== null ? Number(employee.monthly_salary) : null,
+    contracted_hours_per_week:
+      employee.contracted_hours_per_week !== null ? Number(employee.contracted_hours_per_week) : null,
+    default_line_id: employee.default_line_id,
+    is_active: true,
+  });
+}
+
 export async function linkEmployeeUser(employeeId: number, userId: number): Promise<Employee> {
   const { data } = await apiClient.put<ApiEnvelope<Employee>>(`/employees/${employeeId}/user`, {
     user_id: userId,
@@ -87,12 +110,34 @@ export async function unlinkEmployeeUser(employeeId: number): Promise<Employee> 
 
 export async function updateEmploymentTerm(
   employeeId: number,
-  payload: { max_weekly_hours: number; effective_from: string },
+  payload: { max_weekly_hours: number; min_weekly_hours: number | null; effective_from: string },
 ): Promise<EmploymentTerm> {
   const { data } = await apiClient.put<ApiEnvelope<EmploymentTerm>>(
     `/employees/${employeeId}/employment-terms`,
     payload,
   );
+  return data.data;
+}
+
+export async function updateEmployeeUnavailability(
+  employeeId: number,
+  unavailableSlots: UnavailableSlot[],
+): Promise<Employee> {
+  const { data } = await apiClient.put<ApiEnvelope<Employee>>(`/employees/${employeeId}/unavailability`, {
+    unavailable_slots: unavailableSlots,
+  });
+  return data.data;
+}
+
+export async function updateEmployeeRoleExclusions(employeeId: number, schedulingRoleIds: number[]): Promise<Employee> {
+  const { data } = await apiClient.put<ApiEnvelope<Employee>>(`/employees/${employeeId}/role-exclusions`, {
+    scheduling_role_ids: schedulingRoleIds,
+  });
+  return data.data;
+}
+
+export async function updateEmployeeNotes(employeeId: number, notes: string | null): Promise<Employee> {
+  const { data } = await apiClient.put<ApiEnvelope<Employee>>(`/employees/${employeeId}/notes`, { notes });
   return data.data;
 }
 

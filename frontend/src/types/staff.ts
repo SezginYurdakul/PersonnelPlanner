@@ -13,8 +13,16 @@ export interface Agency {
 export interface EmploymentTerm {
   id: number;
   max_weekly_hours: number;
+  min_weekly_hours: number | null;
   effective_from: string;
   effective_to: string | null;
+}
+
+export type SlotType = 'day' | 'afternoon' | 'night';
+
+export interface UnavailableSlot {
+  day_of_week: number;
+  slot_type: SlotType;
 }
 
 export interface Employee {
@@ -36,6 +44,10 @@ export interface Employee {
   user_id: number | null;
   account_active: boolean | null;
   is_active: boolean;
+  is_shift_lead: boolean;
+  notes: string | null;
+  unavailable_slots: UnavailableSlot[];
+  excluded_role_ids: number[];
 }
 
 export interface AgencyFormValues {
@@ -59,4 +71,5 @@ export interface EmployeeFormValues {
   contracted_hours_per_week?: number | null;
   default_line_id?: number | null;
   is_active?: boolean;
+  is_shift_lead?: boolean;
 }

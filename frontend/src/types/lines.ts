@@ -7,7 +7,7 @@ export interface Line {
 }
 
 export type RoleKind = 'station' | 'secondary_task';
-export type AttachmentType = 'station' | 'line' | 'none';
+export type AttachmentType = 'station' | 'line' | 'none' | 'shift_lead' | 'flexible';
 
 export interface SchedulingRole {
   id: number;
@@ -17,6 +17,9 @@ export interface SchedulingRole {
   requires_coverage: boolean;
   attachment_type: AttachmentType | null;
   attached_station: SchedulingRole | null;
+  allows_second_person: boolean;
+  min_headcount: number;
+  fairness_weight: number;
   is_active: boolean;
 }
 
@@ -66,6 +69,9 @@ export interface SchedulingRoleFormValues {
   requires_coverage?: boolean;
   attachment_type?: AttachmentType | null;
   attached_station_role_id?: number | null;
+  allows_second_person?: boolean;
+  min_headcount?: number;
+  fairness_weight?: number;
   is_active?: boolean;
 }
 

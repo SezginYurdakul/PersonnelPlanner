@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../features/auth/AuthContext';
 
 const tabItems = [
+  { to: '/me/dashboard', labelKey: 'employee_nav.dashboard', icon: 'fa-house' },
   { to: '/me/schedule', labelKey: 'employee_nav.schedule', icon: 'fa-calendar-week' },
   { to: '/me/leave-request', labelKey: 'employee_nav.leave_request', icon: 'fa-umbrella-beach' },
   { to: '/me/shift-notice', labelKey: 'employee_nav.shift_notice', icon: 'fa-bell' },

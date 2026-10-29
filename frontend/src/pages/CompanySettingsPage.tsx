@@ -7,11 +7,15 @@ import { AppLayout } from '../components/layout/AppLayout';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { fetchCompanySettings, updateCompanySettings } from '../features/company-settings/api';
+import { FairnessWeightsPanel } from '../features/company-settings/FairnessWeightsPanel';
+import { RosterPlannerSettingsPanel } from '../features/company-settings/RosterPlannerSettingsPanel';
+import { useAuth } from '../features/auth/AuthContext';
 
 const schema = z.object({
   annual_leave_min_notice_days: z.coerce.number().int().min(0),
   shift_notice_min_notice_hours: z.coerce.number().int().min(0),
   emergency_contact_phone: z.string().optional(),
+  week_start_day: z.enum(['monday', 'sunday']),
 });
 
 type FormInput = z.input<typeof schema>;
@@ -19,6 +23,8 @@ type FormValues = z.output<typeof schema>;
 
 export function CompanySettingsPage() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isSuperAdmin = user?.roles.includes('super_admin') ?? false;
   const { data: settings, isLoading } = useQuery({
     queryKey: ['company-settings'],
     queryFn: fetchCompanySettings,
@@ -35,6 +41,7 @@ export function CompanySettingsPage() {
       annual_leave_min_notice_days: 14,
       shift_notice_min_notice_hours: 2,
       emergency_contact_phone: '',
+      week_start_day: 'monday',
     },
   });
 
@@ -44,6 +51,7 @@ export function CompanySettingsPage() {
         annual_leave_min_notice_days: settings.annual_leave_min_notice_days,
         shift_notice_min_notice_hours: settings.shift_notice_min_notice_hours,
         emergency_contact_phone: settings.emergency_contact_phone ?? '',
+        week_start_day: settings.week_start_day,
       });
     }
   }, [settings, reset]);
@@ -107,11 +115,36 @@ export function CompanySettingsPage() {
               {...register('emergency_contact_phone')}
             />
 
+            <label className="mb-1 block text-sm font-semibold text-slate-700">Week starts on</label>
+            <select
+              className="mb-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              {...register('week_start_day')}
+            >
+              <option value="monday">Monday</option>
+              <option value="sunday">Sunday</option>
+            </select>
+            <p className="mb-4 text-xs text-slate-400">
+              Determines how weeks are grouped everywhere: the schedule, the dashboard planning calendar, and the
+              employee-facing schedule view.
+            </p>
+
             <Button type="submit" disabled={isSubmitting}>
               Save
             </Button>
           </form>
         </Card>
+      )}
+
+      {!isLoading && settings && isSuperAdmin && (
+        <div className="mt-6">
+          <RosterPlannerSettingsPanel settings={settings} />
+        </div>
+      )}
+
+      {!isLoading && settings && isSuperAdmin && (
+        <div className="mt-6">
+          <FairnessWeightsPanel settings={settings} />
+        </div>
       )}
     </AppLayout>
   );

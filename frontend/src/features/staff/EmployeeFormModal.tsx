@@ -19,6 +19,7 @@ const schema = z
     hourly_rate: z.coerce.number().optional(),
     monthly_salary: z.coerce.number().optional(),
     contracted_hours_per_week: z.coerce.number().optional(),
+    is_shift_lead: z.boolean().optional(),
   })
   .refine((v) => v.employee_type !== 'uitzendkracht' || v.agency_id, {
     message: 'Agency is required for agency staff',
@@ -68,6 +69,7 @@ export function EmployeeFormModal({
       contracted_hours_per_week: employee?.contracted_hours_per_week
         ? Number(employee.contracted_hours_per_week)
         : undefined,
+      is_shift_lead: employee?.is_shift_lead ?? false,
     },
   });
 
@@ -184,6 +186,14 @@ export function EmployeeFormModal({
             </div>
           </div>
         )}
+
+        <div className="mt-4 rounded border border-slate-200 bg-slate-50 p-3">
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+            <input type="checkbox" {...register('is_shift_lead')} />
+            {t('staff.is_shift_lead')}
+          </label>
+          <p className="mt-1 text-xs text-slate-500">{t('staff.is_shift_lead_hint')}</p>
+        </div>
 
         <div className="mt-6 flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>

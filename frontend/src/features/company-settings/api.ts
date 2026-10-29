@@ -1,5 +1,10 @@
 import { apiClient } from '../../api/client';
-import type { CompanySettings, CompanySettingsFormValues } from '../../types/company-settings';
+import type {
+  CompanySettings,
+  CompanySettingsFormValues,
+  FairnessWeightsFormValues,
+  PlannerSettingsFormValues,
+} from '../../types/company-settings';
 
 interface ApiEnvelope<T> {
   data: T;
@@ -12,6 +17,16 @@ export async function fetchCompanySettings(): Promise<CompanySettings> {
 
 export async function updateCompanySettings(payload: CompanySettingsFormValues): Promise<CompanySettings> {
   const { data } = await apiClient.put<ApiEnvelope<CompanySettings>>('/company-settings', payload);
+  return data.data;
+}
+
+export async function updateFairnessWeights(payload: FairnessWeightsFormValues): Promise<CompanySettings> {
+  const { data } = await apiClient.put<ApiEnvelope<CompanySettings>>('/company-settings/fairness-weights', payload);
+  return data.data;
+}
+
+export async function updatePlannerSettings(payload: PlannerSettingsFormValues): Promise<CompanySettings> {
+  const { data } = await apiClient.put<ApiEnvelope<CompanySettings>>('/company-settings/planner', payload);
   return data.data;
 }
 

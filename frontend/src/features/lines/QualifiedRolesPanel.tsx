@@ -6,6 +6,14 @@ import { fetchRoles, syncEmployeeQualifications } from './api';
 import type { Employee } from '../../types/staff';
 import type { SchedulingRole } from '../../types/lines';
 
+function setsAreEqual(a: Set<number>, b: Set<number>): boolean {
+  if (a.size !== b.size) return false;
+  for (const value of a) {
+    if (!b.has(value)) return false;
+  }
+  return true;
+}
+
 function groupRoles(roles: SchedulingRole[]) {
   const groups = new Map<string, SchedulingRole[]>();
   for (const role of roles) {
@@ -47,6 +55,7 @@ export function QualifiedRolesPanel({
   }
 
   const grouped = groupRoles(allRoles ?? []);
+  const isDirty = !setsAreEqual(selected, new Set(qualifiedRoleIds));
 
   return (
     <div>
@@ -83,14 +92,15 @@ export function QualifiedRolesPanel({
         ))}
       </div>
 
-      <Button
-        className="mt-4"
-        variant="secondary"
-        onClick={() => mutation.mutate([...selected])}
-        disabled={mutation.isPending}
-      >
-        {t('common.save')}
-      </Button>
+      {isDirty && (
+        <Button
+          className="mt-4"
+          onClick={() => mutation.mutate([...selected])}
+          disabled={mutation.isPending}
+        >
+          {t('common.save')}
+        </Button>
+      )}
     </div>
   );
 }

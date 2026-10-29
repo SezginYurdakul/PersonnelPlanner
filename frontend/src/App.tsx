@@ -9,12 +9,14 @@ import { RolesPage } from './pages/RolesPage';
 import { ShiftPatternsPage } from './pages/ShiftPatternsPage';
 import { PayRateSurchargeRulesPage } from './pages/PayRateSurchargeRulesPage';
 import { LeaveRequestsPage } from './pages/LeaveRequestsPage';
+import { ShiftNoticesPage } from './pages/ShiftNoticesPage';
 import { WeeklySchedulePage } from './pages/WeeklySchedulePage';
 import { TimeAttendanceImportPage } from './pages/TimeAttendanceImportPage';
 import { CompanySettingsPage } from './pages/CompanySettingsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { CompletePasswordPage } from './pages/CompletePasswordPage';
 import { EmployeeSchedulePage } from './pages/EmployeeSchedulePage';
+import { EmployeeDashboardPage } from './pages/EmployeeDashboardPage';
 import { LeaveRequestPage } from './pages/LeaveRequestPage';
 import { ShiftNoticePage } from './pages/ShiftNoticePage';
 import { ProtectedRoute } from './components/layout/ProtectedRoute';
@@ -98,6 +100,14 @@ export function App() {
           }
         />
         <Route
+          path="/shift-notices"
+          element={
+            <ProtectedRoute adminOnly>
+              <ShiftNoticesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/schedule"
           element={
             <ProtectedRoute adminOnly>
@@ -126,6 +136,14 @@ export function App() {
           element={
             <ProtectedRoute adminOnly>
               <ReportsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/me/dashboard"
+          element={
+            <ProtectedRoute>
+              <EmployeeDashboardPage />
             </ProtectedRoute>
           }
         />

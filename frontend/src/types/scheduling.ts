@@ -20,6 +20,7 @@ export interface AssignmentLine {
 export interface AssignmentShiftPattern {
   id: number;
   name: string;
+  slot_type: SlotType | null;
   start_time: string;
   end_time: string;
   crosses_midnight: boolean;
@@ -29,6 +30,11 @@ export interface AssignmentRole {
   id: number;
   name: string;
   role_kind: SchedulingRole['role_kind'];
+  attachment_type: SchedulingRole['attachment_type'];
+  // The ROLE's own line_id (null for Shift Lead/Vardiya Sefi or a company-wide secondary
+  // task) - not this assignment's line_id, which is always a real, concrete line borrowed
+  // purely to resolve hours. Used to group these under their own cross-line row.
+  line_id: number | null;
 }
 
 export interface ShiftAssignment {
@@ -48,8 +54,9 @@ export interface ShiftAssignment {
 
 export interface GeneratedScope {
   line_ids: number[];
-  shift_pattern_ids: number[];
+  slot_types: SlotType[];
   role_ids: number[] | null;
+  line_slot_exclusions: LineSlotExclusion[] | null;
 }
 
 export interface Schedule {
@@ -62,6 +69,10 @@ export interface Schedule {
   approved_by: number | null;
   approved_at: string | null;
   generated_scope: GeneratedScope | null;
+  was_approved_before: boolean;
+  version: number;
+  rejection_note: string | null;
+  unfilled_slots: UnfilledSlot[];
   assignments: ShiftAssignment[];
 }
 
@@ -71,15 +82,18 @@ export interface Candidate {
   qualified: boolean;
   rule_compliant: boolean;
   exclusion_reason: string | null;
+  violates_employee_constraint: boolean;
 }
 
 export interface UnfilledSlot {
-  line: AssignmentLine;
+  line: AssignmentLine | null;
   shift_pattern: AssignmentShiftPattern | null;
   work_date: string;
   role: AssignmentRole;
   blocking: boolean;
+  missing_count: number;
   alternatives: Candidate[];
+  reason: string | null;
 }
 
 export interface RuleResult {
@@ -88,14 +102,31 @@ export interface RuleResult {
   message: string | null;
 }
 
-export interface SuggestionResult {
-  schedule: Schedule;
-  unfilled_slots: UnfilledSlot[];
+export type SuggestionRunStatus = 'queued' | 'running' | 'completed' | 'failed';
+
+// Generate runs on the queue (the planner takes minutes); the page polls the run until it
+// completes. `schedule.unfilled_slots` is computed live server-side on every render - no
+// separate top-level field to keep in sync.
+export interface SuggestionRun {
+  id: string;
+  status: SuggestionRunStatus;
+  message: string | null;
+  schedule: Schedule | null;
 }
 
-export interface ApprovalBlockedError {
-  message: string;
-  blocking_slots: UnfilledSlot[];
+export interface LeaveConflict {
+  assignment_id: number;
+  employee: AssignmentEmployee;
+  role: { id: number; name: string } | null;
+  line: { id: number; name: string } | null;
+  work_date: string;
+  reason: 'approved_leave' | 'sick_notice';
+}
+
+export interface LineSlotExclusion {
+  line_id: number;
+  day_of_week: number;
+  slot_type: SlotType;
 }
 
 export interface GenerateSuggestionPayload {
@@ -105,6 +136,7 @@ export interface GenerateSuggestionPayload {
   slot_types: SlotType[];
   role_ids?: number[] | null;
   ranking_mode: RankingMode;
+  line_slot_exclusions?: LineSlotExclusion[];
 }
 
 export interface CreateSchedulePayload {
@@ -151,6 +183,11 @@ export interface AlternativeCandidatesQuery {
   work_date: string;
   role_id: number;
   ranking_mode: RankingMode;
+  // Only meaningful for a flexible/day-specific-hours role (shift_pattern_id null) - the
+  // real hours to rank candidates against, instead of the backend's arbitrary fallback
+  // window (see AlternativeCandidateService::shiftTimeRange()).
+  starts_at?: string | null;
+  ends_at?: string | null;
 }
 
 export { type Line, type SchedulingRole, type ShiftPattern };

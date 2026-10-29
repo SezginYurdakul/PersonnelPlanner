@@ -1,12 +1,14 @@
 import { useDraggable } from '@dnd-kit/core';
 import type { ShiftAssignment } from '../../types/scheduling';
+import { RoleKindIcon } from './RoleKindIcon';
 
 interface ScheduleAssignmentCardProps {
   assignment: ShiftAssignment;
   onClick?: () => void;
+  showName?: boolean;
 }
 
-export function ScheduleAssignmentCard({ assignment, onClick }: ScheduleAssignmentCardProps) {
+export function ScheduleAssignmentCard({ assignment, onClick, showName = true }: ScheduleAssignmentCardProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `assignment-${assignment.id}`,
     data: { assignment },
@@ -20,6 +22,8 @@ export function ScheduleAssignmentCard({ assignment, onClick }: ScheduleAssignme
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex: 20 }
     : undefined;
 
+  const roleIcon = assignment.role && <RoleKindIcon roleKind={assignment.role.role_kind} />;
+
   return (
     <div
       ref={setNodeRef}
@@ -28,25 +32,39 @@ export function ScheduleAssignmentCard({ assignment, onClick }: ScheduleAssignme
       {...attributes}
       onClick={onClick}
       data-assignment-id={assignment.id}
-      className={`cursor-grab rounded-lg border px-2 py-1.5 text-xs shadow-sm transition-shadow active:cursor-grabbing ${
+      className={`cursor-grab rounded-lg border-y border-r-2 px-2 py-1.5 text-xs shadow transition-shadow active:cursor-grabbing ${
         isDragging ? 'opacity-50 shadow-lg' : ''
       } ${
         isSecondaryTask
-          ? 'border-blue-200 bg-blue-50 text-blue-900'
-          : 'border-x-border bg-white text-x-brown'
+          ? 'border-x-gold-dark/70 border-l-[5px] border-l-x-gold-dark bg-amber-100 text-x-brown'
+          : 'border-slate-300 border-l-[5px] border-l-slate-500 bg-white text-x-brown'
       }`}
     >
       <div className="flex items-center justify-between gap-1">
-        <span className="truncate font-bold">
-          {assignment.employee.first_name} {assignment.employee.last_name}
-        </span>
+        {showName ? (
+          <span className="truncate font-bold">
+            {assignment.employee.first_name} {assignment.employee.last_name}
+          </span>
+        ) : (
+          assignment.role && (
+            <span className="flex items-center gap-1 truncate text-[11px] text-slate-500">
+              {roleIcon}
+              {assignment.role.name}
+            </span>
+          )
+        )}
         {assignment.source === 'manual' ? (
           <i className="fa-solid fa-hand text-[10px] text-amber-600" title="Manually assigned" />
         ) : (
           <i className="fa-solid fa-wand-magic-sparkles text-[10px] text-slate-400" title="Auto-suggested" />
         )}
       </div>
-      {assignment.role && <div className="truncate text-[11px] text-slate-500">{assignment.role.name}</div>}
+      {showName && assignment.role && (
+        <div className="flex items-center gap-1 truncate text-[11px] text-slate-500">
+          {roleIcon}
+          {assignment.role.name}
+        </div>
+      )}
       {start && end && (
         <div className="tabular-nums text-[11px] text-slate-400">
           {start.slice(0, 5)}–{end.slice(0, 5)}

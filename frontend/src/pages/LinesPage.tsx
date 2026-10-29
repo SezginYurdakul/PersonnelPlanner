@@ -5,8 +5,16 @@ import { AppLayout } from '../components/layout/AppLayout';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { isAxiosError } from 'axios';
 import { LineFormModal } from '../features/lines/LineFormModal';
-import { createLine, fetchLines, fetchShiftPatternGroups, updateLine } from '../features/lines/api';
+import {
+  createLine,
+  deactivateLine,
+  deleteLinePermanently,
+  fetchLines,
+  fetchShiftPatternGroups,
+  updateLine,
+} from '../features/lines/api';
 import type { Line, LineFormValues } from '../types/lines';
 
 export function LinesPage() {
@@ -31,6 +39,34 @@ export function LinesPage() {
   const updateMutation = useMutation({
     mutationFn: ({ id, values }: { id: number; values: LineFormValues }) => updateLine(id, values),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['lines'] }),
+  });
+
+  const deactivateMutation = useMutation({
+    mutationFn: (id: number) => deactivateLine(id),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['lines'] }),
+  });
+
+  const activateMutation = useMutation({
+    mutationFn: (line: Line) =>
+      updateLine(line.id, {
+        name: line.name,
+        code: line.code,
+        shift_pattern_group_id: line.shift_pattern_group_id,
+        is_active: true,
+      }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['lines'] }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => deleteLinePermanently(id),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['lines'] }),
+    onError: (error) => {
+      const message =
+        isAxiosError<{ errors?: Record<string, string[]> }>(error) && error.response?.data.errors
+          ? Object.values(error.response.data.errors).flat().join('\n')
+          : t('lines.delete_failed');
+      alert(message);
+    },
   });
 
   return (
@@ -68,10 +104,38 @@ export function LinesPage() {
                   <td className="px-6 py-3 text-right">
                     <button
                       type="button"
-                      className="text-sm font-medium text-slate-600 hover:text-slate-900"
+                      className="mr-4 text-sm font-medium text-slate-600 hover:text-slate-900"
                       onClick={() => setEditingLine(line)}
                     >
                       {t('common.edit')}
+                    </button>
+                    {line.is_active ? (
+                      <button
+                        type="button"
+                        className="mr-4 text-sm font-medium text-red-600 hover:text-red-800"
+                        onClick={() => deactivateMutation.mutate(line.id)}
+                      >
+                        {t('lines.deactivate')}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="mr-4 text-sm font-medium text-emerald-600 hover:text-emerald-800"
+                        onClick={() => activateMutation.mutate(line)}
+                      >
+                        {t('lines.activate')}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="text-sm font-medium text-red-800 hover:text-red-950"
+                      onClick={() => {
+                        if (window.confirm(t('lines.delete_confirm'))) {
+                          deleteMutation.mutate(line.id);
+                        }
+                      }}
+                    >
+                      {t('common.delete')}
                     </button>
                   </td>
                 </tr>

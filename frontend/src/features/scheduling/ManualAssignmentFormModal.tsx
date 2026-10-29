@@ -12,6 +12,15 @@ export interface TimeOverride {
   endsAt: string;
 }
 
+export interface LineOverride {
+  lineId: number;
+  shiftPatternId: number;
+}
+
+interface LineOption extends LineOverride {
+  lineName: string;
+}
+
 interface ManualAssignmentFormModalProps {
   scheduleId: number;
   lineId: number;
@@ -20,8 +29,18 @@ interface ManualAssignmentFormModalProps {
   roleId: number;
   roleName: string;
   rankingMode: RankingMode;
+  // Only for a line-independent role (e.g. Shift Lead/Vardiya Sefi) - every OTHER line
+  // running this same slot type today, so the admin can anchor this assignment's hours to
+  // whichever line the person is actually covering, instead of being stuck with whichever
+  // line the backend arbitrarily "borrowed" hours from when it first flagged this open.
+  lineOptions?: LineOption[];
   onClose: () => void;
-  onAssign: (employeeId: number, confirmOverride: boolean, timeOverride?: TimeOverride) => void;
+  onAssign: (
+    employeeId: number,
+    confirmOverride: boolean,
+    timeOverride?: TimeOverride,
+    lineOverride?: LineOverride,
+  ) => void;
 }
 
 export function ManualAssignmentFormModal({
@@ -32,6 +51,7 @@ export function ManualAssignmentFormModal({
   roleId,
   roleName,
   rankingMode,
+  lineOptions,
   onClose,
   onAssign,
 }: ManualAssignmentFormModalProps) {
@@ -40,32 +60,63 @@ export function ManualAssignmentFormModal({
   const [overrideHours, setOverrideHours] = useState(false);
   const [startsAt, setStartsAt] = useState('08:00');
   const [endsAt, setEndsAt] = useState('16:00');
+  const [selectedLineId, setSelectedLineId] = useState<number | null>(lineId);
 
-  const timeOverride: TimeOverride | undefined = overrideHours ? { startsAt, endsAt } : undefined;
+  const selectedLine = lineOptions?.find((o) => o.lineId === selectedLineId);
+  // Once a line is picked from lineOptions, its own line_id/shift_pattern_id take over from
+  // the props (which only ever reflect whichever line the "Unfilled" badge happened to be
+  // anchored to) - everywhere below ranks candidates and creates the assignment against
+  // whichever line is actually selected.
+  const activeLineId = selectedLine?.lineId ?? lineId;
+  const activeShiftPatternId = selectedLine?.shiftPatternId ?? shiftPatternId;
+
+  // A flexible-hours role (shiftPatternId null) has no pattern to fall back on for its
+  // hours - unlike every other role kind, entering a time range here isn't optional.
+  const hoursRequired = activeShiftPatternId === null;
+  const timeOverride: TimeOverride | undefined =
+    hoursRequired || overrideHours ? { startsAt, endsAt } : undefined;
+  const hoursMissing = hoursRequired && (!startsAt || !endsAt);
+  const lineOverride: LineOverride | undefined =
+    lineOptions && activeShiftPatternId !== null ? { lineId: activeLineId, shiftPatternId: activeShiftPatternId } : undefined;
 
   const { data: candidates, isLoading } = useQuery({
-    queryKey: ['alternative-candidates', scheduleId, lineId, shiftPatternId, workDate, roleId, rankingMode],
+    // Included in the key so changing the time pickers on a flexible role, or the line for
+    // a line-independent role, re-ranks candidates against the hours actually about to be
+    // assigned, not stale ones.
+    queryKey: [
+      'alternative-candidates',
+      scheduleId,
+      activeLineId,
+      activeShiftPatternId,
+      workDate,
+      roleId,
+      rankingMode,
+      timeOverride?.startsAt,
+      timeOverride?.endsAt,
+    ],
     queryFn: () =>
       fetchAlternativeCandidates(scheduleId, {
-        line_id: lineId,
-        shift_pattern_id: shiftPatternId,
+        line_id: activeLineId,
+        shift_pattern_id: activeShiftPatternId,
         work_date: workDate,
         role_id: roleId,
         ranking_mode: rankingMode,
+        starts_at: timeOverride?.startsAt,
+        ends_at: timeOverride?.endsAt,
       }),
   });
 
   const visibleCandidates = showAll
     ? candidates
-    : candidates?.filter((c) => c.qualified && c.rule_compliant);
+    : candidates?.filter((c) => c.qualified && c.rule_compliant && !c.violates_employee_constraint);
 
   function handlePick(candidate: Candidate) {
-    if (!candidate.qualified || !candidate.rule_compliant) {
+    if (!candidate.qualified || !candidate.rule_compliant || candidate.violates_employee_constraint) {
       setPendingOverride(candidate);
       return;
     }
 
-    onAssign(candidate.employee.id, false, timeOverride);
+    onAssign(candidate.employee.id, false, timeOverride, lineOverride);
   }
 
   return (
@@ -83,16 +134,48 @@ export function ManualAssignmentFormModal({
           Show all employees (including unqualified)
         </label>
 
-        <label className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-600">
-          <input type="checkbox" checked={overrideHours} onChange={(e) => setOverrideHours(e.target.checked)} />
-          Override shift hours for this line/assignment
-        </label>
-        {overrideHours && (
-          <div className="mb-4 flex items-center gap-3">
-            <TimeSelect value={startsAt} onChange={setStartsAt} />
-            <span className="text-sm text-slate-400">–</span>
-            <TimeSelect value={endsAt} onChange={setEndsAt} />
+        {lineOptions && lineOptions.length > 1 && (
+          <div className="mb-4">
+            <label className="mb-1 block text-xs font-semibold text-slate-600">
+              Anchor to line&apos;s shift hours
+            </label>
+            <select
+              className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+              value={activeLineId}
+              onChange={(e) => setSelectedLineId(Number(e.target.value))}
+            >
+              {lineOptions.map((option) => (
+                <option key={option.lineId} value={option.lineId}>
+                  {option.lineName}
+                </option>
+              ))}
+            </select>
           </div>
+        )}
+
+        {hoursRequired ? (
+          <div className="mb-4">
+            <label className="mb-1 block text-xs font-semibold text-slate-600">Start / end time</label>
+            <div className="flex items-center gap-3">
+              <TimeSelect value={startsAt} onChange={setStartsAt} />
+              <span className="text-sm text-slate-400">–</span>
+              <TimeSelect value={endsAt} onChange={setEndsAt} />
+            </div>
+          </div>
+        ) : (
+          <>
+            <label className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-600">
+              <input type="checkbox" checked={overrideHours} onChange={(e) => setOverrideHours(e.target.checked)} />
+              Override shift hours for this line/assignment
+            </label>
+            {overrideHours && (
+              <div className="mb-4 flex items-center gap-3">
+                <TimeSelect value={startsAt} onChange={setStartsAt} />
+                <span className="text-sm text-slate-400">–</span>
+                <TimeSelect value={endsAt} onChange={setEndsAt} />
+              </div>
+            )}
+          </>
         )}
 
         {isLoading && <p className="text-sm text-slate-500">Loading candidates…</p>}
@@ -109,17 +192,28 @@ export function ManualAssignmentFormModal({
                 </p>
                 <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
                   {candidate.score !== null && (
-                    <span className="tabular-nums">
+                    <span
+                      className="tabular-nums"
+                      title={
+                        rankingMode === 'cost'
+                          ? 'Estimated cost for this shift'
+                          : 'Recent fairness load: last 8 approved weeks + hours already assigned this week - not just this one shift'
+                      }
+                    >
                       {rankingMode === 'cost' ? `€${candidate.score.toFixed(2)}` : `${candidate.score.toFixed(1)}h`}
                     </span>
                   )}
                   {!candidate.qualified && <Badge tone="warning">Requires override</Badge>}
                   {candidate.qualified && !candidate.rule_compliant && <Badge tone="danger">Rule violation</Badge>}
+                  {candidate.qualified && candidate.rule_compliant && candidate.violates_employee_constraint && (
+                    <Badge tone="warning">{candidate.exclusion_reason ?? 'Constraint'}</Badge>
+                  )}
                 </div>
               </div>
               <Button
                 variant={candidate.qualified && candidate.rule_compliant ? 'primary' : 'secondary'}
                 className="px-3 py-1.5 text-xs"
+                disabled={hoursMissing}
                 onClick={() => handlePick(candidate)}
               >
                 Assign
@@ -133,13 +227,15 @@ export function ManualAssignmentFormModal({
         <ConfirmDialog
           title="Assign anyway?"
           message={`${pendingOverride.employee.first_name} ${pendingOverride.employee.last_name} ${
-            pendingOverride.qualified ? pendingOverride.exclusion_reason ?? 'would violate a rule.' : 'is not qualified for this role.'
+            !pendingOverride.qualified
+              ? 'is not qualified for this role.'
+              : pendingOverride.exclusion_reason ?? 'would violate a rule.'
           } Assign anyway?`}
           confirmLabel="Assign anyway"
           danger
           onCancel={() => setPendingOverride(null)}
           onConfirm={() => {
-            onAssign(pendingOverride.employee.id, true, timeOverride);
+            onAssign(pendingOverride.employee.id, true, timeOverride, lineOverride);
             setPendingOverride(null);
           }}
         />

@@ -12,6 +12,9 @@ export function EmploymentTermPanel({ employee }: { employee: Employee }) {
   const [maxWeeklyHours, setMaxWeeklyHours] = useState(
     employee.employment_terms?.max_weekly_hours ?? 40,
   );
+  const [minWeeklyHours, setMinWeeklyHours] = useState<number | ''>(
+    employee.employment_terms?.min_weekly_hours ?? '',
+  );
   const [effectiveFrom, setEffectiveFrom] = useState(
     new Date().toISOString().slice(0, 10),
   );
@@ -20,6 +23,7 @@ export function EmploymentTermPanel({ employee }: { employee: Employee }) {
     mutationFn: () =>
       updateEmploymentTerm(employee.id, {
         max_weekly_hours: maxWeeklyHours,
+        min_weekly_hours: minWeeklyHours === '' ? null : minWeeklyHours,
         effective_from: effectiveFrom,
       }),
     onSuccess: () => {
@@ -49,6 +53,18 @@ export function EmploymentTermPanel({ employee }: { employee: Employee }) {
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
+              {t('staff.min_weekly_hours')}
+            </label>
+            <input
+              type="number"
+              className="w-28 rounded border border-slate-300 px-3 py-2 text-sm"
+              value={minWeeklyHours}
+              placeholder="—"
+              onChange={(e) => setMinWeeklyHours(e.target.value === '' ? '' : Number(e.target.value))}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">
               {t('staff.effective_from')}
             </label>
             <input
@@ -69,7 +85,9 @@ export function EmploymentTermPanel({ employee }: { employee: Employee }) {
         <div className="flex items-center justify-between">
           <p className="text-sm text-slate-700">
             {employee.employment_terms
-              ? `${employee.employment_terms.max_weekly_hours}h / week (from ${employee.employment_terms.effective_from})`
+              ? employee.employment_terms.min_weekly_hours
+                ? `${employee.employment_terms.min_weekly_hours}h–${employee.employment_terms.max_weekly_hours}h / week (from ${employee.employment_terms.effective_from})`
+                : `${employee.employment_terms.max_weekly_hours}h / week (from ${employee.employment_terms.effective_from})`
               : '—'}
           </p>
           <Button variant="secondary" onClick={() => setIsEditing(true)}>

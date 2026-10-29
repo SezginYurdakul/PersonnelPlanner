@@ -8,7 +8,7 @@ import type {
   GenerateSuggestionPayload,
   MoveAssignmentPayload,
   Schedule,
-  SuggestionResult,
+  SuggestionRun,
   UpdateAssignmentPayload,
   UpdateSchedulePayload,
 } from '../../types/scheduling';
@@ -20,15 +20,6 @@ interface ApiEnvelope<T> {
 export async function fetchSchedules(): Promise<Schedule[]> {
   const { data } = await apiClient.get<ApiEnvelope<Schedule[]>>('/schedules');
   return data.data;
-}
-
-/**
- * A week may now have more than one draft/proposed/approved Schedule at once (multiple
- * scenarios) - callers pick one from this list rather than assuming a single result.
- */
-export async function fetchSchedulesForWeek(weekStartDate: string): Promise<Schedule[]> {
-  const schedules = await fetchSchedules();
-  return schedules.filter((s) => s.week_start_date === weekStartDate);
 }
 
 export async function fetchSchedule(id: number): Promise<Schedule> {
@@ -50,13 +41,33 @@ export async function deleteSchedule(id: number): Promise<void> {
   await apiClient.delete(`/schedules/${id}`);
 }
 
-export async function generateSuggestion(payload: GenerateSuggestionPayload): Promise<SuggestionResult> {
-  const { data } = await apiClient.post<SuggestionResult>('/schedules/suggest', payload);
-  return data;
+export async function startSuggestionRun(payload: GenerateSuggestionPayload): Promise<SuggestionRun> {
+  const { data } = await apiClient.post<{ run: SuggestionRun }>('/schedules/suggest', payload);
+  return data.run;
+}
+
+export async function fetchSuggestionRun(runId: string): Promise<SuggestionRun> {
+  const { data } = await apiClient.get<{ run: SuggestionRun }>(`/schedules/suggest/${runId}`);
+  return data.run;
+}
+
+export async function submitScheduleForReview(id: number): Promise<Schedule> {
+  const { data } = await apiClient.post<ApiEnvelope<Schedule>>(`/schedules/${id}/submit`);
+  return data.data;
 }
 
 export async function approveSchedule(id: number): Promise<Schedule> {
   const { data } = await apiClient.post<ApiEnvelope<Schedule>>(`/schedules/${id}/approve`);
+  return data.data;
+}
+
+export async function rejectSchedule(id: number, note: string): Promise<Schedule> {
+  const { data } = await apiClient.post<ApiEnvelope<Schedule>>(`/schedules/${id}/reject`, { note });
+  return data.data;
+}
+
+export async function unlockSchedule(id: number, note?: string): Promise<Schedule> {
+  const { data } = await apiClient.post<ApiEnvelope<Schedule>>(`/schedules/${id}/unlock`, { note });
   return data.data;
 }
 
