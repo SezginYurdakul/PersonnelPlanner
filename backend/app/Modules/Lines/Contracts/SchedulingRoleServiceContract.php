@@ -30,10 +30,12 @@ interface SchedulingRoleServiceContract
     public function delete(SchedulingRole $role): void;
 
     /**
-     * Replace an employee's full set of qualified roles (ProjectPlan.md §11a.3).
+     * Replace an employee's full set of qualified roles (ProjectPlan.md §11a.3), marking the
+     * preferred stations among them - null keeps the ones already marked.
      *
      * @param  array<int>  $roleIds
+     * @param  ?array<int>  $preferredRoleIds
      * @return Collection<int, SchedulingRole>
      */
-    public function syncEmployeeQualifications(Employee $employee, array $roleIds): Collection;
+    public function syncEmployeeQualifications(Employee $employee, array $roleIds, ?array $preferredRoleIds = null): Collection;
 }

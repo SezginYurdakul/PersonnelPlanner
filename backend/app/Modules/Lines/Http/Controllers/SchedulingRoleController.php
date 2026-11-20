@@ -63,7 +63,7 @@ class SchedulingRoleController extends Controller
 
     public function syncQualifications(SyncQualificationsRequest $request, Employee $employee)
     {
-        $roles = $this->roles->syncEmployeeQualifications($employee, $request->roleIds());
+        $roles = $this->roles->syncEmployeeQualifications($employee, $request->roleIds(), $request->preferredRoleIds());
 
         return SchedulingRoleResource::collection($roles);
     }

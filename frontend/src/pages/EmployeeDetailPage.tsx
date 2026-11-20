@@ -93,7 +93,11 @@ export function EmployeeDetailPage() {
         </Card>
 
         <Card>
-          <QualifiedRolesPanel employee={employee} qualifiedRoleIds={employee.qualified_role_ids} />
+          <QualifiedRolesPanel
+            employee={employee}
+            qualifiedRoleIds={employee.qualified_role_ids}
+            preferredRoleIds={employee.preferred_role_ids}
+          />
         </Card>
 
         <Card>

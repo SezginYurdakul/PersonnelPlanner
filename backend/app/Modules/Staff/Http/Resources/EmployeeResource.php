@@ -29,6 +29,7 @@ class EmployeeResource extends JsonResource
             'default_line_id' => $this->default_line_id,
             'employment_terms' => new EmploymentTermResource($this->whenLoaded('currentEmploymentTerm')),
             'qualified_role_ids' => $this->whenLoaded('schedulingRoles', fn () => $this->schedulingRoles->pluck('id')),
+            'preferred_role_ids' => $this->whenLoaded('schedulingRoles', fn () => $this->preferredRoleIds()),
             'has_account' => $this->hasLinkedAccount(),
             'user_id' => $this->user_id,
             // Whether the linked User's account is activated (ProjectPlan.md §8g's

@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Collection;
 
 #[Fillable([
     'user_id',
@@ -85,13 +86,28 @@ class Employee extends Model
 
     /**
      * The scheduling roles (stations/secondary tasks) this employee is qualified for
-     * (ProjectPlan.md §11a.3).
+     * (ProjectPlan.md §11a.3), each with whether it's one they prefer.
      *
      * @return BelongsToMany<SchedulingRole, $this>
      */
     public function schedulingRoles(): BelongsToMany
     {
-        return $this->belongsToMany(SchedulingRole::class, 'employee_scheduling_roles');
+        return $this->belongsToMany(SchedulingRole::class, 'employee_scheduling_roles')->withPivot('is_preferred');
+    }
+
+    /**
+     * The qualified stations this employee prefers - the roster planner keeps them there, or
+     * on those stations' lines, when it can (ProjectPlan.md §28.2 tier 6). Reads the loaded
+     * schedulingRoles.
+     *
+     * @return Collection<int, int>
+     */
+    public function preferredRoleIds(): Collection
+    {
+        return $this->schedulingRoles
+            ->filter(fn (SchedulingRole $role) => (bool) $role->pivot?->is_preferred)
+            ->pluck('id')
+            ->values();
     }
 
     /**

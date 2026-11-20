@@ -77,10 +77,11 @@ export async function deleteRolePermanently(id: number): Promise<void> {
 export async function syncEmployeeQualifications(
   employeeId: number,
   roleIds: number[],
+  preferredRoleIds: number[],
 ): Promise<SchedulingRole[]> {
   const { data } = await apiClient.put<ApiEnvelope<SchedulingRole[]>>(
     `/employees/${employeeId}/qualified-roles`,
-    { role_ids: roleIds },
+    { role_ids: roleIds, preferred_role_ids: preferredRoleIds },
   );
   return data.data;
 }

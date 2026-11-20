@@ -40,6 +40,8 @@ export interface Employee {
   default_line_id: number | null;
   employment_terms: EmploymentTerm | null;
   qualified_role_ids: number[];
+  // Qualified stations the roster planner keeps this employee on (or on their line) when it can.
+  preferred_role_ids: number[];
   has_account: boolean;
   user_id: number | null;
   account_active: boolean | null;

@@ -66,11 +66,19 @@ final class SchedulingRoleService implements SchedulingRoleServiceContract
 
     /**
      * @param  array<int>  $roleIds
+     * @param  ?array<int>  $preferredRoleIds
      * @return Collection<int, SchedulingRole>
      */
-    public function syncEmployeeQualifications(Employee $employee, array $roleIds): Collection
+    public function syncEmployeeQualifications(Employee $employee, array $roleIds, ?array $preferredRoleIds = null): Collection
     {
-        $employee->schedulingRoles()->sync($roleIds);
+        $preferredRoleIds = array_map('intval', $preferredRoleIds ?? $employee->schedulingRoles()
+            ->wherePivot('is_preferred', true)
+            ->pluck('scheduling_roles.id')
+            ->all());
+
+        $employee->schedulingRoles()->sync(collect($roleIds)
+            ->mapWithKeys(fn ($roleId) => [(int) $roleId => ['is_preferred' => in_array((int) $roleId, $preferredRoleIds, true)]])
+            ->all());
 
         return $employee->schedulingRoles()->with(['line'])->get();
     }
