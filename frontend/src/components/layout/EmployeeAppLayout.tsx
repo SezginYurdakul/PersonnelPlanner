@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { NavLink } from 'react-router-dom';
+import { Link, Navigate, NavLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../features/auth/AuthContext';
 
@@ -19,6 +19,13 @@ const tabItems = [
 export function EmployeeAppLayout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const { t } = useTranslation();
+  const isAdmin = user?.roles.includes('admin') || user?.roles.includes('super_admin');
+
+  // An admin account with no linked employee has nothing to show here (every /me call is a
+  // 403), e.g. after opening the installed app, whose start page is /me/schedule.
+  if (isAdmin && !user?.employee) {
+    return <Navigate to="/" replace />;
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-x-cream">
@@ -29,14 +36,25 @@ export function EmployeeAppLayout({ children }: { children: ReactNode }) {
           </div>
           <span className="text-sm font-extrabold tracking-wide">{user?.employee?.first_name ?? user?.name}</span>
         </div>
-        <button
-          type="button"
-          onClick={() => void logout()}
-          title={t('auth.logout')}
-          className="rounded-lg p-2 text-slate-300 hover:bg-x-brown-mid hover:text-white"
-        >
-          <i className="fa-solid fa-right-from-bracket text-base" />
-        </button>
+        <div className="flex items-center gap-1">
+          {isAdmin && (
+            <Link
+              to="/"
+              title={t('employee_nav.admin_panel')}
+              className="rounded-lg p-2 text-slate-300 hover:bg-x-brown-mid hover:text-white"
+            >
+              <i className="fa-solid fa-gauge text-base" />
+            </Link>
+          )}
+          <button
+            type="button"
+            onClick={() => void logout()}
+            title={t('auth.logout')}
+            className="rounded-lg p-2 text-slate-300 hover:bg-x-brown-mid hover:text-white"
+          >
+            <i className="fa-solid fa-right-from-bracket text-base" />
+          </button>
+        </div>
       </header>
 
       <main className="flex-1 overflow-y-auto p-4 pb-24">{children}</main>

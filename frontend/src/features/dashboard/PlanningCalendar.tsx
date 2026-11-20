@@ -25,7 +25,7 @@ export function PlanningCalendar() {
 
   const { data: weeks, isLoading } = useQuery({
     queryKey: ['planning-calendar'],
-    queryFn: () => fetchPlanningCalendar(4, 4),
+    queryFn: () => fetchPlanningCalendar(2, 6),
   });
 
   const currentWeekStart = getWeekStart(companySettings?.week_start_day ?? 'monday');

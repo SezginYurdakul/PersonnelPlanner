@@ -242,7 +242,7 @@ export function StaffPage() {
             </tbody>
           </table>
         ) : (
-          <p className="p-6 text-sm text-slate-500">{t('agencies.empty')}</p>
+          <p className="p-6 text-sm text-slate-500">{t('staff.empty')}</p>
         )}
       </Card>
 
