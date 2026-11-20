@@ -3,6 +3,7 @@
 namespace App\Modules\Scheduling\Services;
 
 use App\Modules\Lines\Models\SchedulingRole;
+use App\Modules\Lines\Models\ShiftPattern;
 use App\Modules\Notifications\Services\NotificationDispatchService;
 use App\Modules\Scheduling\Contracts\ShiftAssignmentServiceContract;
 use App\Modules\Scheduling\DTOs\MoveAssignmentData;
@@ -52,6 +53,7 @@ final class ShiftAssignmentService implements ShiftAssignmentServiceContract
 
         $assignment = ShiftAssignment::create([
             ...$data->toArray(),
+            ...$this->holderShift($employee, $schedule, $data->workDate, $role, $data->shiftPatternId, $start, $end),
             'schedule_id' => $schedule->id,
         ]);
 
@@ -129,6 +131,7 @@ final class ShiftAssignmentService implements ShiftAssignmentServiceContract
             'line_id' => $data->lineId,
             'shift_pattern_id' => $data->shiftPatternId,
             'work_date' => $data->workDate,
+            ...$this->holderShift($assignment->employee, $assignment->schedule, $data->workDate, $role, $data->shiftPatternId, $assignment->starts_at, $assignment->ends_at),
             'source' => ShiftAssignment::SOURCE_MANUAL,
         ]);
         $this->notifications->notifyAssignmentChanged($assignment);
@@ -208,6 +211,41 @@ final class ShiftAssignmentService implements ShiftAssignmentServiceContract
         return [
             'assignment' => $assignment,
             'rule_results' => $this->ruleEngine->run($context),
+        ];
+    }
+
+    /**
+     * A line-independent task runs during its holder's own shift, as generate places it - so,
+     * without times of its own, it takes the line and hours of the station or lead shift the
+     * employee already works in that slot, not the line the grid's cross-line row borrows (a
+     * lead on Line 3's 10:00-18:00 given silo watch on Line 1's 08:00-16:00 would otherwise
+     * be booked for ten hours that day).
+     *
+     * @return array{line_id?: int, shift_pattern_id?: ?int, starts_at?: ?string, ends_at?: ?string}
+     */
+    private function holderShift(Employee $employee, Schedule $schedule, string $workDate, ?SchedulingRole $role, ?int $shiftPatternId, ?string $start, ?string $end): array
+    {
+        if ($role === null || $role->line_id !== null || ! $role->isSecondaryTask()
+            || in_array($role->attachment_type, ['shift_lead', 'flexible'], true)
+            || $shiftPatternId === null || $start !== null || $end !== null) {
+            return [];
+        }
+
+        $holderShift = ShiftAssignment::query()
+            ->where('schedule_id', $schedule->id)
+            ->where('employee_id', $employee->id)
+            ->where('work_date', $workDate)
+            ->whereHas('shiftPattern', fn ($q) => $q->where('slot_type', ShiftPattern::query()->whereKey($shiftPatternId)->value('slot_type')))
+            ->whereHas('role', fn ($q) => $q->where('role_kind', SchedulingRole::KIND_STATION)
+                ->orWhere('attachment_type', 'shift_lead'))
+            ->orderBy('id')
+            ->first();
+
+        return $holderShift === null ? [] : [
+            'line_id' => $holderShift->line_id,
+            'shift_pattern_id' => $holderShift->shift_pattern_id,
+            'starts_at' => $holderShift->starts_at,
+            'ends_at' => $holderShift->ends_at,
         ];
     }
 
