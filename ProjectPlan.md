@@ -22,7 +22,7 @@ This document should be treated as the single source of truth unless explicitly 
 
 ### Current Implementation Note
 
-The initial build (§24's 9 steps) is complete and the system is in active use by the factory with its real workforce (19 employees across Lijn 1 / Line 2, 3 shifts, 5-6 working days). This document has been updated to track that implementation, not just the original pre-build design - where a later section describes something built differently than an earlier section originally specified (most visibly §12.6, which has moved from "proposed" to "implemented and since extended"), the later/more specific section is authoritative. §27 is a standing implementation reference for the scheduling engine specifically, kept in sync with the actual code rather than the original design intent.
+The initial build (§24's 9 steps) is complete and the system is in active use by the factory with its real workforce (19 employees across Lijn 1 / Line 2, 3 shifts, 5-6 working days). This document has been updated to track that implementation, not just the original pre-build design - where a later section describes something built differently than an earlier section originally specified (most visibly §12.6, which has moved from "proposed" to "implemented and since extended"), the later/more specific section is authoritative. §27 is a standing implementation reference for the scheduling engine specifically, kept in sync with the actual code rather than the original design intent. The architecture, page map, data model and API sections (§6, §8-§10A, §13, §13b, §15-§18, §20) were last checked against the code on 2026-11-20.
 
 The scheduling rules, shift patterns, and terminology in this document were derived in part from real weekly paper/Excel schedules used at the factory before this system existed (Week 31-37, July-September 2026), photographed and reviewed with the user. Several since-built features (§12.3c, §12.7, §13.5) came directly from the user reviewing the live system's output against real scheduling problems (illness mid-week, published-plan corrections, uneven shift-type rotation) rather than from the original paper-schedule review - this document is a living spec, updated as the system grows, not a frozen pre-build artifact.
 
@@ -127,20 +127,35 @@ Important assumptions:
 
 ## 6. Product Modules
 
-The product is organized into eight product domains:
+The product is organized into nine product domains:
 
-1. `Staff & Agencies` - employees, employment terms, temp agencies
-2. `Lines & Shift Patterns` - production lines, shift time definitions
+1. `Staff & Agencies` - employees, employment terms, temp agencies, standing unavailability and role exclusions
+2. `Lines & Shift Patterns` - production lines, shift pattern groups and their shift times, pay rate surcharge rules
 3. `Roles & Competency Matching` - line-specific and line-independent roles, employee qualifications
 4. `Leave & Sick Tracking` - leave types, leave requests, approval
-5. `Time & Attendance` - imported actual clock-in/out and break data, used for cost calculation
-6. `Weekly Scheduling` - schedule generation, rule engine, suggestion, manual edit, approval, alternative-candidate lookup
-7. `Reporting & Export` - headcount and cost reports, PDF/Excel export
-8. `Employee Schedule View` - visibility-scoped schedule display (PWA) and notifications
+5. `Shift Notices` - an employee reporting sick or late for one planned shift (§13b)
+6. `Time & Attendance` - imported actual clock-in/out and break data, used for cost calculation
+7. `Weekly Scheduling` - schedule generation (the roster planner, §28), rule engine, manual edit, review and approval, alternative-candidate lookup, corrections and acknowledgments
+8. `Reporting & Export` - headcount and cost reports, PDF/Excel export
+9. `Employee Schedule View` - visibility-scoped schedule display (PWA) and notifications
 
-There is also one internal support domain:
+There are also three support domains: `Rule Engine & Notification Infrastructure`, `Company Settings` (week start, notice periods, fairness weights, roster planner settings) and the admin `Dashboard`.
 
-9. `Rule Engine & Notification Infrastructure`
+Each domain is a backend module under `backend/app/Modules` (§9.2):
+
+| Domain | Backend module |
+|---|---|
+| Staff & Agencies | `Staff` |
+| Lines & Shift Patterns, Roles & Competency Matching | `Lines` |
+| Leave & Sick Tracking | `Leave` |
+| Shift Notices | `ShiftNotices` |
+| Time & Attendance | `TimeAttendance` |
+| Weekly Scheduling, Rule Engine | `Scheduling`, plus the Python roster planner service in `planner/` (§28) |
+| Reporting & Export | `Reporting` |
+| Employee Schedule View & Notifications | `Scheduling` (the employee's week), `Notifications` (push subscriptions, email and Web Push) |
+| Company Settings | `CompanySettings` |
+| Dashboard | `Dashboard` |
+| Login, invitations, users | `Auth` |
 
 ---
 
@@ -225,16 +240,19 @@ Do not rely on decorative motion.
 
 ## 8. Frontend Architecture
 
-Recommended frontend stack:
+Frontend stack:
 
-- React
-- TypeScript
+- React 19, TypeScript, Vite
 - React Router
-- Tailwind
+- Tailwind CSS 4
 - TanStack Query (server state/cache for schedule data)
+- axios (`src/api/client.ts`)
+- react-hook-form + zod (forms and their validation)
+- dayjs (dates)
 - `@dnd-kit/core` (drag-and-drop for the admin schedule grid - see §12.3a)
-- vite-plugin-pwa (installable PWA, service worker, manifest)
+- vite-plugin-pwa with `injectManifest` (installable PWA; the service worker is `src/sw.ts`)
 - react-i18next (UI translation across the 6 supported locales - see §21a)
+- oxlint
 
 ### 8.1 Frontend Requirements
 
@@ -244,51 +262,39 @@ Recommended frontend stack:
 - reusable design tokens and UI primitives shared between the admin and employee views
 - no business-critical rule logic duplicated in the frontend - the frontend renders what the backend's RuleEngine already computed, it does not re-implement rule checks
 
-### 8.2 Suggested Frontend Structure
+### 8.2 Frontend Structure
 
-- `src/pages`
-- `src/components`
-- `src/components/ui`
-- `src/components/layout`
-- `src/features/staff`
-- `src/features/lines`
-- `src/features/leave`
-- `src/features/schedule`
-- `src/features/reports`
-- `src/hooks`
-- `src/lib`
-- `src/api`
-- `src/types`
-- `src/utils`
+- `src/pages` - one component per route (§10)
+- `src/components/ui` - shared primitives (§8.3)
+- `src/components/layout` - `AppLayout` (admin), `EmployeeAppLayout` (employee PWA), `ProtectedRoute` (login, and admin-only routes)
+- `src/components/InstallPrompt.tsx` - the PWA install prompt (§21.2a)
+- `src/features/<feature>` - per feature, an `api.ts` with its requests plus the feature's own components: `auth`, `company-settings`, `dashboard`, `employee-profile`, `employee-schedule`, `leave`, `lines` (lines, roles, shift pattern groups, surcharge rules, qualifications), `notifications`, `reporting`, `schedule-acknowledgments`, `scheduling` (the schedule grid, the generate form, the candidate lists), `shift-notices`, `staff`, `time-attendance`
+- `src/api/client.ts` - the axios instance (`/api/v1` base URL, auth token)
+- `src/lib` - i18n setup, the query client, week math (`week.ts`, following `week_start_day`)
+- `src/locales/<locale>/common.json` - the translations, one file per locale (§21a)
+- `src/types` - API response types
+- `src/sw.ts` - the service worker (offline cache, Web Push)
 
 ### 8.3 Shared UI Components
 
-Required base components:
+In `src/components/ui`: `Button`, `Badge` (draft/proposed/approved, leave/sick and other states), `Card`, `ConfirmDialog` (approval, destructive edits, overrides), `RuleViolationBanner` (§19.4) and `TimeSelect`. Form fields are plain Tailwind-styled inputs validated with react-hook-form and zod - there is no separate Input, Select, DateRangePicker, IconButton or EmptyState component.
 
-- Button
-- IconButton
-- Input
-- Select
-- DateRangePicker
-- Badge (for status: draft/proposed/approved/leave/sick)
-- Card
-- WeeklyScheduleGrid (admin, dense, drag-and-drop enabled - see §12.3a)
-- ScheduleAssignmentCard (the draggable unit within the grid: employee + shift + station)
-- WeeklyScheduleList (employee, mobile-simplified)
-- RuleViolationBanner
-- EmptyState
-- ConfirmDialog (used for approval, destructive edits)
+The schedule's components live with their feature in `src/features/scheduling`: `WeeklyScheduleGrid` (admin, dense, drag-and-drop - §12.3a), `ScheduleAssignmentCard` (the draggable unit: employee + shift + station), `ScheduleGridCell`, `WeeklySummaryPanel` (each person's hours per shift type against their contract), `ManualAssignmentFormModal` (§12.2b), `AlternativeCandidatesPanel` (§12.2a) and `CandidateLoad` (a candidate's hours this week against their contract, then their fairness points or this shift's cost). The employee's week is `EmployeeSchedulePage` with `features/employee-schedule/DayStatus`.
 
 ---
 
 ## 9. Backend Architecture
 
-Recommended backend stack:
+Backend stack:
 
-- Laravel (latest stable), API-only
-- PostgreSQL
+- Laravel 13 on PHP 8.3, API-only
+- PostgreSQL 16
+- Redis (queue and cache)
+- Laravel Sanctum (API tokens)
 - `spatie/laravel-permission` for role/authorization
-- feature-first service modules with explicit service classes rather than fat controllers
+- `barryvdh/laravel-dompdf` and `maatwebsite/excel` for report exports, `minishlink/web-push` for Web Push
+- feature-first modules with explicit service classes rather than fat controllers
+- the roster planner: a separate Python service (OR-Tools CP-SAT) the backend calls over HTTP (§28)
 
 ### 9.1 Backend Design Rules
 
@@ -298,74 +304,103 @@ Recommended backend stack:
 - The rule engine must be extensible without editing existing rule classes (Strategy pattern, see §9.3)
 - email/push sending must be queueable and must not block the HTTP request that triggered it
 
-### 9.2 Suggested Module Structure
+### 9.2 Module Structure
+
+The backend is split into modules under `app/Modules`. Each registers itself with its own service provider, which binds its contracts to their services:
 
 ```
 backend/
 ├── app/
-│   ├── Http/Controllers/Api/V1/
-│   ├── Http/Requests/
-│   ├── Http/Resources/
-│   ├── Models/
-│   ├── Services/
-│   │   ├── RuleEngine/
-│   │   ├── Scheduling/
-│   │   └── Notifications/
-│   ├── Notifications/
-│   ├── Jobs/
-│   ├── Policies/
-│   └── Exports/
+│   ├── Modules/
+│   │   ├── Auth/  CompanySettings/  Dashboard/  Leave/  Lines/  Notifications/
+│   │   ├── Reporting/  Scheduling/  ShiftNotices/  Staff/  TimeAttendance/
+│   │   └── <Module>/
+│   │       ├── Contracts/                   service interfaces
+│   │       ├── DTOs/                        typed data passed between layers
+│   │       ├── Http/{Controllers,Requests,Resources}/
+│   │       ├── Models/
+│   │       ├── Services/
+│   │       └── <Module>ServiceProvider.php
+│   ├── Jobs/                                GenerateScheduleSuggestion (§28.11), SendWebPushNotification
+│   ├── Notifications/                       ScheduleChanged, ScheduleCorrected, UserInvited, the Web Push channel
+│   ├── Models/User.php
+│   └── Http/Controllers/Controller.php
+├── config/{planner,scheduling_rules}.php
 ├── database/{migrations,seeders,factories}/
-└── routes/api.php
+├── routes/api.php                           every endpoint, under /api/v1 (§18)
+└── tests/{Feature,Unit,Support}/
+
+planner/                                     the roster planner service (§28)
+├── roster/{problem,model,report,server}.py
+└── tests/
+
+frontend/src/                                §8.2
 ```
 
-```
-frontend/
-└── src/{pages,components,features,api,hooks,lib,types,utils}/
-```
+Folders only some modules have: `Scheduling/RuleEngine` (§9.3) and `Scheduling/Exceptions`, `Reporting/Exports`, `TimeAttendance/{Imports,Parsing}`, `Staff/Support`.
 
 ### 9.3 Rule Engine Architecture
 
-Strategy pattern under `app/Services/RuleEngine/`:
+Strategy pattern under `app/Modules/Scheduling/RuleEngine/`:
 
 - `Contracts/SchedulingRule.php` - interface: `evaluate(EmployeeScheduleContext $context): RuleResult`
-- `Rules/MaxWeeklyHoursRule.php` - the only mandatory rule for the initial build; reads a per-employee `employment_terms.max_weekly_hours` value (default 40, but overridable higher or lower per person)
-- `Rules/MinRestBetweenShiftsRule.php`, `Rules/ConsecutiveNightShiftsRule.php`, `Rules/WeeklyMandatoryRestDayRule.php` - skeleton classes present in the codebase, registered but `enabled => false` in `config/scheduling_rules.php`. These represent future Dutch ATW (Arbeidstijdenwet) constraints (11-hour minimum rest between shifts, limits on consecutive night shifts, mandatory weekly rest) that are architected for now and activated later by filling in their logic - they must not be implemented with placeholder logic that silently passes or fails.
-- `RuleEngine.php` - runs all config-enabled rules in sequence for a given candidate assignment and returns a `RuleResult` collection. A violation is surfaced as a UI warning, never a hard database constraint - the planner can consciously override it.
+- `Rules/MaxWeeklyHoursRule.php` - the week's hours plus the candidate's must stay within `employment_terms.max_weekly_hours` (default 40, overridable higher or lower per person); a shift and the tasks held during it count once (`EffectiveWorkedHoursCalculator`)
+- `Rules/MinRestBetweenShiftsRule.php` - at least 11 hours between two shifts, also across two weeks' schedules; enabled. The ATW's once-a-week reduction to 8 hours is deliberately not implemented (user decision).
+- `Rules/ConsecutiveNightShiftsRule.php`, `Rules/WeeklyMandatoryRestDayRule.php` - skeleton classes, registered but `enabled => false` in `config/scheduling_rules.php`. Their `evaluate()` throws if ever called, so they can never silently pass or fail; they are activated later by filling in their logic.
+- `RuleEngine.php` - runs every enabled rule from `config/scheduling_rules.php` for a candidate assignment and returns a `RuleResult` collection. A violation is surfaced as a UI warning, never a hard database constraint - the planner can consciously override it.
 
-### 9.4 Suggested Service Layer
+Generation doesn't go through the RuleEngine: the roster planner keeps hours, rest and shift types in its own model (§28). The RuleEngine checks manual edits and screens the alternatives offered for a slot (§27.3).
 
-- `ScheduleSuggestionService` - generates a draft schedule (see §12)
-- `RuleEngine` - evaluates scheduling rules (see §9.3)
-- `ScheduleApprovalService` - transitions a schedule draft/proposed -> approved, and is the single trigger point for notifications
-- `NotificationDispatchService` - wraps Laravel's Notification system for email + PWA Web Push, queued
-- `ScheduleExportService` - PDF/Excel generation for reports
+### 9.4 Service Layer
+
+The main services, each in its module (most behind a contract):
+
+- `ScheduleSuggestionService` - generate: asks the roster planner for leads and operators (`RosterPlanner`, `RosterPlannerClient`), places them and the secondary tasks (§27.1); it runs on the queue, its runs tracked by `ScheduleSuggestionRuns` (§28.11)
+- `ScheduleService` - the schedule's status machine (submit, approve, reject, unlock - §12.3d), the version bump on a correction (§12.7), and the notifications sent at approval
+- `ShiftAssignmentService` - manual create, update, move and delete (§27.4)
+- `AlternativeCandidateService` with `SlotCandidateRanker` - who else could take a slot (§12.2a)
+- `MandatoryCoverageChecker` (§12.3b), `LeaveConflictChecker` (§12.3c), `ScheduleAcknowledgmentService` (§12.7)
+- `EmployeeFairnessScoreService`, `RoleRotationService`, `EffectiveWorkedHoursCalculator` (§12.6, §27)
+- `RuleEngine` (§9.3)
+- `NotificationDispatchService` - wraps Laravel's notifications for email + Web Push, queued (§20)
+- `ReportingService` with `ReportExport` - the report and its PDF/Excel export (§14)
+- `TimeClockImportService` - attendance import, preview then commit (§13a)
+- `ShiftNoticeService` with `ShiftNoticeEligibilityChecker` (§13b)
+- `LeaveRequestService` with `AnnualLeaveNoticeChecker` (§13.6) and `AnnualLeaveScheduleConflictChecker` (§13.5)
+- `DashboardService` - the dashboard summary and planning calendar (§10A.1)
 
 ---
 
 ## 10. Page Map
 
-Required routes (admin-facing, desktop):
+Admin routes (desktop), for an account with the `admin` or `super_admin` role:
 
-- `/login`
-- `/dashboard` - admin landing
-- `/staff` - employee list/CRUD
-- `/staff/:id` - employee detail incl. employment terms and qualified roles (§11a.3)
+- `/login`, and `/complete-invitation` (an invited person sets their password, §10A.6a)
+- `/` - admin dashboard (§10A.1)
+- `/staff` - employee list/CRUD, invitations and accounts waiting for activation
+- `/staff/:id` - employee detail: employment terms, qualified and preferred roles (§11a.3), availability, role exclusions, notes, linked account
 - `/agencies` - temp agency list/CRUD
 - `/lines` - production line list/CRUD
 - `/roles` - role list/CRUD (line-specific and line-independent, §11a.2)
-- `/shift-patterns` - shift time definitions list/CRUD
+- `/shift-patterns` - shift pattern groups and their day/afternoon/night times
+- `/pay-rate-surcharge-rules` - surcharge rules (§11.2c)
 - `/leave-requests` - leave/sick tracking and approval
-- `/schedules` - weekly schedule list
-- `/schedules/:id` - weekly schedule grid (generate/edit/approve)
-- `/reports/headcount`
-- `/reports/cost-breakdown`
-- `/users/:id/visibility-scope` - admin sets an employee's schedule visibility level
+- `/shift-notices` - employees' sick/late notices to acknowledge (§13b)
+- `/schedule` - weekly schedules: a week's plans, generate, and the grid (edit, submit, approve). The week and the plan are passed as navigation state, not in the path.
+- `/time-attendance` - attendance import and entries (§13a)
+- `/company-settings` - company, fairness and roster planner settings
+- `/reports` - headcount and cost report with PDF/Excel export (§14)
 
-Required routes (employee-facing, PWA, mobile):
+An employee's visibility scope (§15.2) has an endpoint (`PUT /users/{user}/visibility-scope`) but no screen yet.
 
-- `/my-schedule` - schedule view, content depends on the user's `visibility_scope` (own / line / company)
-- `/my-leave` - view own leave/sick history (optional in initial build, see open items)
+Employee routes (PWA, mobile), for a `user` account, or an admin linked to an employee:
+
+- `/me/dashboard` - greeting, today's shift, banners for a corrected schedule to acknowledge (§12.7), next leave, own details, shortcuts to request leave or report sick/late
+- `/me/schedule` - the week's schedule; its content depends on `visibility_scope` (own / line / company)
+- `/me/leave-request` - request annual leave, and see own requests (§13.6)
+- `/me/shift-notice` - report sick or late for an upcoming shift (§13b)
+
+Any other path goes back to `/`; a `user` account opening an admin route lands on its `/me` pages.
 
 ---
 
@@ -373,24 +408,18 @@ Required routes (employee-facing, PWA, mobile):
 
 ### 10A.1 Admin Dashboard
 
-Desktop order from top to bottom:
+As built, desktop, top to bottom:
 
-1. current week status strip (draft/proposed/approved, with a one-click "go to this week's schedule")
-2. a row of KPI cards, each backed by real data this product actually has - no fabricated production/IoT metrics (e.g. no "daily bread output" or "oven temperature," since this product tracks scheduling, not manufacturing execution):
-   - active employee count (with a vast/uitzendkracht split, e.g. "142 permanent · 22 agency")
-   - employees with no linked account (§11.2b)
-   - pending leave requests (§13)
-   - per-line staffing rate for the current/selected week: assigned headcount vs. `requires_coverage` station slots that need filling, per line (this is the one legitimate "how full is line X" metric, since it's derived directly from `shift_assignments` and `scheduling_roles`, not invented)
-3. a two-column section below the KPI row:
-   - wider column: per-line staffing detail (a progress bar per line showing filled vs. required station coverage for the current week, linking through to that line's slice of the schedule grid)
-   - narrower column: a quick-actions card (generate this week's suggestion, review pending leave requests, jump to reports) styled as the one dark/brand-colored panel on an otherwise light page (§7.2) - it's the deliberate visual anchor of the dashboard
-4. shortcuts to staff, lines, shift patterns
-5. recent reports
+1. a two-thirds-wide column with the planning calendar, next to a "pending" card:
+   - **planning calendar:** the weeks from 2 back to 6 ahead (`GET /dashboard/planning-calendar`), each with its plans as status badges (draft/proposed/approved, or "no plan"); the current week is highlighted, and a click opens that week on `/schedule` (directly its plan when it has exactly one). Below it, the current week's state: how many mandatory stations are still open, or that it's approved.
+   - **pending:** links to what waits for an admin - leave requests (§13), shift notices (§13b), accounts waiting for activation
+2. KPI cards: active staff (with the vast/uitzendkracht split), employees without an account (§11.2b), active lines
+3. who is on leave this week
+4. a setup card listing the lines and whether each is active
 
 Layout rules:
 
-- the current week's schedule status must be the single most prominent element
-- pending leave requests must be visible without navigating away, since they block accurate suggestion generation
+- pending items must be visible without navigating away, since they affect the plan
 - every number on this screen must trace to a real query against this product's own tables - if a metric would require data this product doesn't collect (production volume, equipment sensors, etc.), it does not appear here, even as a placeholder
 
 ### 10A.2 Weekly Schedule Grid (Admin)
@@ -398,7 +427,7 @@ Layout rules:
 Desktop order from top to bottom:
 
 1. week selector and schedule status (draft/proposed/approved) with an approve action, disabled with an inline reason while a mandatory-coverage station is unfilled (§12.3b)
-2. "Generate Suggestion" action, scoped to selectable lines/shifts, with a `ranking_mode` toggle ("Fair" vs "Cost-based") the planner picks before generating
+2. "Generate Suggestion" action, scoped to selectable lines/shifts, with a `ranking_mode` toggle ("Fair" vs "Cost-based") the planner picks before generating. Each ticked line, and the line-independent roles, get a card with their own day x shift grid, and under it each station and task can be left out on single shifts (§28.9 item 1)
 3. the grid itself: rows grouped by line (plus a leadership/unassigned group), columns = the 7 days of the week; a cell can show one or more assignments (each showing shift time, role/position label, and a station-vs-secondary-task visual distinction when a person holds both at once), be blank ("vrij"), or be **unfilled** (§12.2a - a station slot the suggestion engine could not staff), with unfilled mandatory stations visually distinct from unfilled optional ones
 4. a rule-violation panel/banner that lists any current violations with a jump-to-cell link
 5. an unfilled-slots panel listing every slot the suggestion engine could not staff, separating **blocking** (mandatory-coverage) from advisory ones, each expandable into its ranked alternative-candidates list (§12.2a)
@@ -412,6 +441,7 @@ Layout rules:
 - editing a cell must show any new rule violation inline, immediately, without a page reload
 - every assignment card in the grid is draggable; dropping it onto a different line/shift/day cell moves that person there - see §12.3a for the full drag-and-drop behavior
 - clicking an unfilled slot (or any filled slot, to ask "who else could do this?") opens the ranked alternative-candidates list (§12.2a) inline or in a side panel, showing each candidate's exclusion reason and rank
+- each candidate in that list and in the assignment form shows their hours in this plan this week against their contract (e.g. `32 / 40h`, a shift and the tasks held on it counted once), then what they are ranked by: this shift's cost in cost mode, or in fair mode their fairness points (`202 pts` - weighted hours over the last 8 approved weeks plus this week). The points are deliberately not shown in hours: shown as `202h` they read as this week's hours (user-reported, 2026-11-17)
 
 ### 10A.2a Roles (Admin)
 
@@ -456,15 +486,18 @@ Desktop order from top to bottom (list):
 
 1. filter bar: employee type (vast/uitzendkracht), agency, line, active/inactive
 2. table: name, type, agency (if any), default line, active status
+3. accounts waiting for activation: invited people who have set their password (§10A.6a)
 
 Desktop order from top to bottom (detail):
 
 1. identity block (name, contact, phone, email)
-2. linked account block: shows the currently linked `user` (name/email) if any, with a "Link account" search/dropdown (searching existing users by name/email) when none is linked, or an "Unlink" action when one is - see §11.2a
+2. linked account block: shows the currently linked `user` (name/email) if any, with a "Link account" search/dropdown (searching existing users by name/email) when none is linked, or an "Unlink" action when one is - see §11.2a; it can also invite a new account by email (§10A.6a)
 3. employment block (type, agency if applicable, hourly rate, default line)
 4. employment terms block (max weekly hours, effective dates)
-5. qualified roles block: a checklist/multi-select of all `roles` (grouped by line, plus a line-independent group, and within each group separated into stations vs. secondary tasks) showing which ones this employee is currently qualified for, editable inline
-6. recent assignment history
+5. qualified roles block: a checklist/multi-select of all `roles` (grouped by line, plus a line-independent group, and within each group separated into stations vs. secondary tasks) showing which ones this employee is currently qualified for, editable inline; a star next to each qualified station marks it preferred (§11a.3)
+6. availability: the day + shift-type combinations they can't work (§17.5d)
+7. role exclusions: roles they must never get, even if qualified (§17.5e)
+8. admin notes
 
 Layout rules:
 
@@ -524,19 +557,17 @@ Layout rules:
 
 ### 10A.6a Account Creation
 
-Mobile/desktop order from top to bottom (this screen is used by both an admin creating their own account and an admin creating an employee's account, so it must work at both sizes):
+Accounts are created by invitation, not by a registration form:
 
-1. standard identity fields (name, email, password, phone)
-2. language selector - one of the six supported locales (§21a.4), required, no default selected
-3. a short, one-sentence explanation of why installing the app matters ("Install this app on your phone to get notified the moment your schedule changes.") followed by the platform-specific install step (§21.2a):
-   - on a detected Android/Chrome-family browser: a single "Add to Home Screen" button
-   - on a detected iOS/Safari browser: a small numbered visual guide (Share icon → "Add to Home Screen")
-4. the account-creation submit action
+1. on an employee's detail page (§10A.3), the linked-account block either links an existing user or invites a new one: name and email (by default the employee's). `POST /users/invite` creates the user without a password, links them to the employee and emails them an invitation link (`UserInvited`, email only)
+2. the link opens `/complete-invitation?token=...`, where the invited person sets their password (twice) and picks their language - one of the six supported locales (§21a.4), required, no default selected
+3. on success the page shows the install step (`InstallPrompt`, §21.2a): a short explanation of why installing the app matters, then on a detected Android/Chrome-family browser an "Add to Home Screen" button, and on iOS/Safari a small numbered visual guide (Share icon → "Add to Home Screen")
+4. the account stays inactive until an admin activates it from the staff page's pending-activation list (`POST /users/{user}/activate`); then the person can log in
 
 Layout rules:
 
-- the install step must read as a helpful recommendation alongside registration, not a gate - the submit action is never disabled by whether the employee has installed the app yet
-- the install step's copy and visuals must themselves be localized once a language is picked in step 2, consistent with the rest of the product (§21a.3)
+- the install step must read as a helpful recommendation, not a gate - nothing waits on whether the app is installed
+- the page's copy, the install step included, follows the language picked in step 2 (§21a.3)
 
 ---
 
@@ -552,7 +583,7 @@ Maintain an accurate, typed record of every person who can be scheduled, includi
 - `flex` and `VZM`, observed as informal labels in the factory's current paper schedule, are both temp-agency categories and are represented as rows in the `agencies` table, not as special-cased employee types
 - an agency-linked employee must have an `agency_id` and an `hourly_rate` (temp-agency staff are always billed hourly)
 - a permanent (`vast`) employee has a `pay_type` of either `hourly` (with `hourly_rate` set) or `monthly` (with `monthly_salary` set), so cost-based scheduling (§12.2) has a real per-hour cost to compare even for salaried staff (a monthly salary is converted to an effective hourly cost using the employee's contracted hours, for ranking purposes only - it is not a payroll calculation)
-- a `default_line_id` on an employee is a weighting/default hint only for the suggestion engine - it never hard-restricts which line an employee can be assigned to, since the real schedules show staff moving between lines within the same week
+- a `default_line_id` on an employee is a weighting/default hint only for the suggestion engine - it never hard-restricts which line an employee can be assigned to, since the real schedules show staff moving between lines within the same week (the roster planner doesn't read it; its line preference comes from the preferred stations, §11a.3)
 - leadership/management staff (e.g. "Leiding" in the current paper schedule) are modeled as employees with `default_line_id = null`
 - separately from `default_line_id`, each employee has an explicit set of **qualified roles** (see §11a) - which line-specific or line-independent positions they are allowed to be automatically scheduled into
 
@@ -612,7 +643,7 @@ The admin configures the factory's structure in a specific, dependency-driven or
 
 1. **Lines** (§17.5) - the physical production lines exist first, since almost everything else attaches to one.
 2. **Work stations** (`role_kind = station`, §11a.2) - created next, each usually (not always) tied to one line, so line-based cost and headcount reporting (§14) can attribute a station's cost to its line.
-3. **Secondary tasks** (`role_kind = secondary_task`, §11a.2) - created after stations, since a secondary task can optionally reference a station, a line, or neither (§11a.2a).
+3. **Secondary tasks** (`role_kind = secondary_task`, §11a.2) - created after stations, since a secondary task can optionally reference a station, a line, or neither (§11a.2).
 4. **Employees** (§11) - created last among these, since qualifying an employee (§11a.3) requires the stations and secondary tasks to already exist to check boxes against.
 
 ### 11a.2 Role Types
@@ -636,9 +667,10 @@ This replaces the earlier free-text `station` field (previously seen on `shift_a
 
 ### 11a.3 Employee-Role Qualification
 
-- an employee can be qualified for any number of roles, via a simple many-to-many mapping (`employee_line_roles`, despite the name covering both line-specific and line-independent roles - see §17)
+- an employee can be qualified for any number of roles, via a simple many-to-many mapping (`employee_scheduling_roles`, covering both line-specific and line-independent roles - see §17.5b)
 - the suggestion engine (§12.2) will only ever automatically propose an employee for a role they are qualified for
 - an admin can add or remove an employee's qualifications at any time from the employee detail screen (§11.3) or from a dedicated role-management screen
+- **preferred stations (user decision, 2026-11-09):** among their qualified stations, an employee can have one or more preferred ones (the star next to the station in "Qualified roles"; `is_preferred` on the pivot). People can work several lines, but the roster planner keeps them on a preferred station, or else on a preferred station's line, and only moves them to another station or line when a higher rule needs it - coverage, one shift type a week, contract hours, the weekly rotation (§28.2 tier 6). Moved behind the rotation on 2026-11-11: with preference first, an operator preferring a station whose leftover shifts were always nights stayed on nights three weeks running. Never a restriction; someone with no preferred station is equally happy anywhere they're qualified
 
 ### 11a.3a Mandatory Coverage for Station Roles
 
@@ -661,7 +693,7 @@ Once the suggestion engine has filled all station slots for a day/shift (§12.2,
 - **Line priority first**: for a **line-attached** secondary task (§11a.2), the candidate pool is restricted, before ranking, to employees who already hold a station assignment on that task's line for the overlapping time window - an employee working a different line that shift is never considered for it. A **station-attached** task is restricted the same way, but further narrowed to employees currently holding that exact station. An **unattached** task's candidate pool is simply everyone qualified and already holding some station that shift (any line).
 - **Fairness second**: within whatever candidate pool the priority rule above produces, the employee with the fewest total secondary-task assignments **so far**, counted across all secondary task types combined (not per-task-type - confirmed by the user, since a person who picks up many different small tasks should still be treated as already carrying a fair share), is selected. This reuses the same `fair` scoring concept as station assignment (§12.2) but with a separate counter - a person's number of station shifts and their number of secondary-task assignments are tracked and balanced independently, since one is mandatory coverage and the other is supplemental load.
 - Both rules apply regardless of the schedule's `ranking_mode` (§12.2) - fairness for secondary tasks is not affected by choosing `cost` mode for station assignment, since cost-based station selection and fair secondary-task distribution are answering different questions (who's cheapest to staff a mandatory position vs. who's least loaded with extra duties).
-- Like stations, this automatic pass only ever assigns **qualified** employees (`employee_line_roles`, §11a.3); if no qualified, line-eligible candidate holds a station that shift, the secondary task slot is left unfilled and appears in the unfilled-slots panel (§12.2a) as advisory (never blocking - only station `requires_coverage` blocks approval, §12.3b).
+- Like stations, this automatic pass only ever assigns **qualified** employees (`employee_scheduling_roles`, §11a.3); if no qualified, line-eligible candidate holds a station that shift, the secondary task slot is left unfilled and appears in the unfilled-slots panel (§12.2a) as advisory (never blocking - only station `requires_coverage` blocks approval, §12.3b).
 - the planner can always manually reassign a secondary task afterward, same as any other assignment (§12.3, §12.3a)
 
 ### 11a.4 Admin Override
@@ -694,7 +726,7 @@ Let a planner generate a rule-aware draft for a given week across 3 lines and 3 
 `ScheduleSuggestionService`:
 
 1. Input: `week_start_date`, which lines/shifts/roles to generate for, and a `ranking_mode` chosen by the planner: `fair` or `cost` (this mode governs **station** assignment only - secondary-task assignment always follows the fixed fairness logic in §11a.3c regardless of `ranking_mode`).
-2. Build the eligible candidate pool per slot: `employees.is_active = true` AND no approved leave/sick record covering that specific day (`leave_requests.start_date <= work_date <= end_date AND status = 'approved'`), computed independently per day since a person may be eligible some days of the week and not others, **AND qualified for the slot's role** per `employee_line_roles` (§11a.3) - a slot for a line-specific role only considers employees qualified for that exact line+role combination; a slot for a line-independent role considers anyone qualified for that role regardless of line.
+2. Build the eligible candidate pool per slot: `employees.is_active = true` AND no approved leave/sick record covering that specific day (`leave_requests.start_date <= work_date <= end_date AND status = 'approved'`), computed independently per day since a person may be eligible some days of the week and not others, **AND qualified for the slot's role** per `employee_scheduling_roles` (§11a.3) - a slot for a line-specific role only considers employees qualified for that exact line+role combination; a slot for a line-independent role considers anyone qualified for that role regardless of line.
 3. For each day x line x shift x **station**-role slot: run the `RuleEngine` against each qualified candidate (would assigning this slot exceed this person's `max_weekly_hours`?), drop rule-violating candidates, then rank the remainder according to `ranking_mode` and select exactly one employee for that slot (the engine always aims to satisfy `requires_coverage` with one person per station - a manual step is required afterward to add a second person to the same station, per §11a.3b):
    - `fair` - fewest hours assigned so far this week wins (the original, default fairness score)
    - `cost` - lowest computed cost wins for that specific slot's day/shift: the candidate's base rate (agency `hourly_rate`, or permanent staff's `hourly_rate`/salary-derived effective hourly cost, per §11.2) plus whatever pay rate surcharge rules overlap that slot's time segments (§11.2c) - this is why cost is computed per slot instance rather than looked up as a flat per-employee number; ties broken by the `fair` score so cost mode does not repeatedly overload the single cheapest person
@@ -726,7 +758,7 @@ In addition to editing cells directly in the grid or dragging cards, the admin h
 
 - a rule violation blocks nothing - it is a visible warning only
 - every edit re-runs the affected employee's rule checks so the violation panel is always current
-- an approved schedule can still be edited afterward; each post-approval edit re-triggers the notification flow (§12.4) for the affected employee(s)
+- only a `draft` can be edited: an approved schedule is unlocked first (super_admin, §12.3d), which drops it back to `draft`; approving it again notifies its employees of the correction (§12.7)
 
 ### 12.3a Drag-and-Drop Editing
 
@@ -752,9 +784,24 @@ A second, narrower approval block, alongside §12.3b's mandatory-coverage one: i
 
 - the API returns 422 with a `leave_conflicts` list (`LeaveConflictResource`: assignment, employee, role, line, work_date, `reason` of `approved_leave` or `sick_notice`)
 - the grid surfaces this as a banner naming each conflicting assignment, with a "Reject with this reason" action that pre-fills the rejection note (§12.3's `reject()` flow) so the planner doesn't have to retype the conflict
-- resolution is always manual: the super_admin either reassigns the conflicting slot to someone else and re-submits, or rejects with the conflict as the stated reason - there is no automatic reassignment, consistent with §4.2's "the planner is the final decision-maker"
+- resolution is always manual: the super_admin rejects the schedule back to `draft` (the banner pre-fills the conflict as the reason), and the planner reassigns the slot and re-submits - there is no automatic reassignment, consistent with §4.2's "the planner is the final decision-maker"
 
 This only covers a schedule that has **not yet been approved/published**; §12.7 covers the same underlying problem (illness discovered after a schedule is already live) for a schedule that's already approved.
+
+### 12.3d Review Workflow (Implemented)
+
+A schedule moves through three statuses; every transition is recorded in `schedule_status_events` (§17.11c):
+
+| Action | Status change | Who | Endpoint |
+|---|---|---|---|
+| submit | `draft` -> `proposed` | admin or super_admin | `POST /schedules/{id}/submit` - clears `rejection_note` |
+| approve | `proposed` -> `approved` | super_admin | `POST /schedules/{id}/approve` |
+| reject | `proposed` -> `draft` | super_admin | `POST /schedules/{id}/reject` - `note` required, kept as `rejection_note` |
+| unlock | `approved` -> `draft` | super_admin | `POST /schedules/{id}/unlock` - `note` optional |
+
+- only a `draft` can be edited or deleted (`ShiftAssignmentService::assertScheduleIsEditable()`), and only a draft that was never approved can be regenerated (`was_approved_before`, §17.7)
+- approve refuses with 422 when a mandatory station is still open (§12.3b, `blocking_slots`), when an assignment conflicts with approved leave or a sick notice (§12.3c, `leave_conflicts`), or when another plan of the same week is already approved
+- approve records the week's fairness scores (§17.11b), bumps `version` on a correction and sends the notifications - `ScheduleChanged` on a first approval, `ScheduleCorrected` after that (§12.4, §12.7); unlock removes the fairness scores again
 
 ### 12.4 Notification Trigger
 
@@ -813,7 +860,7 @@ None of these touch the `RuleEngine`, the DTOs, or the suggestion API contract (
 
 §12.3c handles a leave conflict discovered before approval; this section handles the same underlying problem (illness, an emergency, a scheduling mistake found late) **after** a schedule is already `approved` and employees have been notified. The user's requirement was explicit and three-part: version the correction, notify everyone who was on the original plan, and track who has actually acknowledged seeing the correction - not just that a notification was sent.
 
-**Versioning.** `schedules.version` (integer, default 1) increments by exactly one each time an already-approved schedule is corrected and re-approved. The correction cycle itself reuses the existing unlock -> edit -> re-approve flow (§8/§12.3b's `ScheduleService`) unchanged - `unlock()` drops status back to `draft` (note required), the planner edits manually (a corrected schedule can never be regenerated via "Generate Suggestion" again, per `was_approved_before`/`canBeGenerated()` in §27), then `approve()` runs again. `approve()` detects a correction via the schedule's own pre-existing `was_approved_before` flag (true means this is at least the second approval) and bumps `version` only in that case - a schedule's first-ever approval stays at version 1.
+**Versioning.** `schedules.version` (integer, default 1) increments by exactly one each time an already-approved schedule is corrected and re-approved. The correction cycle itself reuses the existing unlock -> edit -> re-approve flow (§12.3d's `ScheduleService`) unchanged - `unlock()` drops status back to `draft` (with an optional note), the planner edits manually (a corrected schedule can never be regenerated via "Generate Suggestion" again, per `was_approved_before`/`canBeGenerated()` in §27), then `approve()` runs again. `approve()` detects a correction via the schedule's own pre-existing `was_approved_before` flag (true means this is at least the second approval) and bumps `version` only in that case - a schedule's first-ever approval stays at version 1.
 
 **Correction notification.** A first approval sends the existing `ScheduleChanged` notification (§12.4/§20); a correction (version > 1) sends a distinct `ScheduleCorrected` notification instead (never both for the same approval) to every employee with an assignment on the schedule, naming the week and the new version number and linking to the employee dashboard.
 
@@ -841,7 +888,7 @@ A day where an employee simply has no shift assigned ("vrij" in the current pape
 
 ### 13.4 Acceptance Criteria
 
-- an admin, or an employee self-service (§15, implemented) can record Vakantie/Ziek/Short Excuse with a date range
+- an admin can record Vakantie/Ziek/Short Excuse with a date range for anyone; an employee requests only Vakantie from the PWA (§13.6) and reports illness for one shift as a shift notice (§13b)
 - a pending leave request can be approved or rejected - approving/rejecting a request for a week that already has a schedule (draft, proposed, or approved) is entirely the admin's judgment call, not automated, whichever the schedule's state (§13.5 is the one exception: Vakantie specifically can't even be requested for an already-approved week)
 - an approved leave/sick record for a given day always removes that employee from that day's suggestion candidate pool going forward; §12.3c and §12.7 separately cover a schedule that already has an assignment for that employee when the leave gets approved
 
@@ -852,6 +899,10 @@ Once a week's schedule is `approved` and published, requesting `Vakantie` (annua
 - it only applies to `Vakantie` specifically (matched via `LeaveType::SLUG_VAKANTIE`, not the display name, so renaming the leave type in the UI can't silently break the check) - `Ziek` (sick) and `Short Excuse` remain freely creatable against an approved week, since illness and emergencies don't wait for a convenient week
 - it blocks **creation**, not approval - there is no equivalent restriction on an admin's discretion once a non-Vakantie request against an approved week exists; approving it is business as usual, same as any leave request (§13.4)
 - the rationale (user-confirmed): a published week is a commitment already made to the workforce - planned vacation should be requested far enough ahead that it never collides with an already-live plan, whereas sickness/emergencies are exactly the case §12.7's correction flow exists for
+
+### 13.6 Self-Service Annual Leave Notice Period (Implemented)
+
+An employee's own request from the PWA (`POST /me/leave-requests`: `start_date`, `end_date`, optional `reason`) is always `Vakantie`, and must start at least `annual_leave_min_notice_days` days from today (company setting, default 14; `AnnualLeaveNoticeChecker`) - otherwise a validation error on `start_date`. §13.5's approved-week check applies on top. An admin entering leave from `/leave-requests` has no notice period and can pick any leave type; only §13.5 applies.
 
 ---
 
@@ -879,7 +930,7 @@ Both shapes produce the same stored result: a clock-in time, a clock-out time, a
 
 ### 13a.4 Import Flow
 
-- the admin uploads a CSV/Excel file from an import screen and explicitly selects which shape it is (**Simple** or **Detailed**) before parsing - the system does not try to auto-detect the format
+- the admin uploads a CSV/Excel file from an import screen and explicitly selects which shape it is (**Simple** or **Detailed**) before parsing - the system does not try to auto-detect the format. It takes two steps: the upload (`POST /time-clock-imports/preview`) returns the file's column headers and an `import_token`; the admin maps the columns to the fields, and `POST /time-clock-imports/commit` imports the file
 - each row/event-group is matched to an `employee` by whatever identifier the file carries (e.g. an employee number or email column mapped during import) and to a `work_date`; if a `shift_assignment` exists for that employee on that date, the new `time_clock_entries` row is linked to it automatically
 - rows that fail to match any employee, or that carry an obviously invalid time range (e.g. clock-out before clock-in), are reported back to the admin as skipped/errored rather than silently dropped or guessed at
 - an admin can review imported entries afterward and manually correct the employee/date match or the times themselves, the same way other manually-corrected data in this system works (§11.2a's manual-linking precedent)
@@ -891,6 +942,29 @@ Both shapes produce the same stored result: a clock-in time, a clock-out time, a
 - a row that can't be matched to an employee, or has an invalid time range, is surfaced to the admin as a per-row import error, not silently skipped
 - cost calculations use actual clocked-and-break-adjusted time when available for an employee/date, and fall back to the planned shift duration otherwise
 - an admin can manually edit an imported attendance entry after the fact
+
+---
+
+## 13b. Shift Notices Module Specification (Implemented)
+
+### 13b.1 Goal
+
+Let an employee tell the planner from the PWA that they will miss, or be late for, one specific planned shift - without a leave request, which is a date range and needs approval.
+
+### 13b.2 Behavior
+
+- the employee picks one of their own shift assignments and a type: `sick` (won't come) or `late` (comes later; `delay_minutes` required), with an optional note
+- only while the shift is at least `shift_notice_min_notice_hours` away (company setting, default 2). Closer to the shift, or once it has started, the notice is refused and the form shows `emergency_contact_phone` (company setting) to call instead. `GET /me/shift-notices/eligibility?shift_assignment_id=` tells the form beforehand, and `POST /me/shift-notices` checks the same rule again (`ShiftNoticeEligibilityChecker`)
+- a notice starts `submitted`. An admin sees it on `/shift-notices` (submitted ones first, filterable by status, employee and type) and on the dashboard's pending card (§10A.1), and acknowledges it (`acknowledged`, with who and when). Acknowledging doesn't change the schedule - replacing the person is a manual edit
+- a `sick` notice on an assignment of a schedule that isn't approved yet blocks its approval like approved leave does (§12.3c, reason `sick_notice`); a `late` notice never does, since the person still comes
+- the employee's week (`GET /me/schedule`) shows their notices on the days they apply to
+- no notification is sent for a notice; admins see it on the dashboard
+
+### 13b.3 Acceptance Criteria
+
+- an employee can file a notice only for their own assignment
+- a notice inside the notice window is refused server-side, and the emergency number is shown
+- a sick notice on a draft or proposed schedule blocks its approval until that assignment is changed
 
 ---
 
@@ -914,6 +988,10 @@ Give management a trustworthy, exportable view of who worked, on what line, and 
 - a day with imported attendance data shows break-adjusted actual cost; a day without it shows planned-shift cost, and the report does not error or block on partial attendance data coverage
 - exported files open correctly in common PDF viewers and Excel
 
+### 14.4 Known Issue (Open)
+
+- **The cost breakdown double-counts overlapping assignments.** `ReportingService::buildCostBreakdown()` adds up every assignment on its own, so a secondary task held during a station shift (silo watch), or a second assignment in the same shift, adds its hours and cost again, and a day's `time_clock_entries` row is counted once per assignment that day. Hours should be merged per employee and day the way `EffectiveWorkedHoursCalculator` does for the weekly-hours rule (§27.5 item 2).
+
 ---
 
 ## 15. Employee Schedule View (PWA) & Notifications Module Specification
@@ -924,15 +1002,16 @@ Let every employee check their own schedule from their phone without needing to 
 
 ### 15.2 Visibility Scope
 
-Two top-level roles exist:
+Three roles exist (`spatie/laravel-permission`):
 
-- **`admin`** - full access to all scheduling, staff, and rule configuration (both per-person rules like `max_weekly_hours`, and company-level rule defaults)
+- **`super_admin`** - everything an admin can do, plus approving, rejecting and unlocking schedules (§12.3d) and the fairness and roster planner settings (§17.11a)
+- **`admin`** - full access to all scheduling, staff, and rule configuration (both per-person rules like `max_weekly_hours`, and company-level rule defaults); submits schedules for review
 - **`user`** (employee-facing) - cannot edit anything scheduling-related; can only *view* schedules, at one of three visibility levels the admin assigns per user:
   1. **own schedule only** (default for every new user)
   2. **own line's schedule** (everyone assigned to the same line(s) that week)
   3. **entire company schedule** (all lines, all staff)
 
-This is implemented as a `visibility_scope` field (`own` / `line` / `company`, default `own`) rather than as separate Laravel roles per level, since it's a single per-user setting the admin can change at any time (`PUT /v1/users/{user}/visibility-scope`), not a distinct permission set.
+This is implemented as a `visibility_scope` field (`own` / `line` / `company`, default `own`) rather than as separate Laravel roles per level, since it's a single per-user setting the admin can change at any time (`PUT /v1/users/{user}/visibility-scope`), not a distinct permission set. There is no screen for it yet - it is only set through that endpoint.
 
 ### 15.3 PWA Requirements
 
@@ -954,6 +1033,10 @@ This is implemented as a `visibility_scope` field (`own` / `line` / `company`, d
 - an employee with the PWA installed and notifications enabled receives both an email and a push notification when an approved shift affecting them is created, changed, or removed; an employee without the PWA installed still receives the email
 - the schedule view can be installed to a phone's home screen and opened without a browser address bar
 
+### 15.6 Known Issue (Open)
+
+- **The employee's week shows assignments of plans that aren't approved yet.** `GET /me/schedule` (`EmployeeScheduleController`) reads every `shift_assignments` row of the week regardless of its schedule's status, so a draft or proposed plan - and every parallel draft of the same week - shows up on the employee's phone before it is approved, and a shift notice (§13b) can be filed against such an assignment. It should read only the approved schedule's assignments (found while checking this document against the code, 2026-11-20).
+
 ---
 
 ## 16. Rule Engine Specification
@@ -964,15 +1047,16 @@ Enforce scheduling constraints in a way that is transparent to the planner and e
 
 ### 16.2 Initial Rule
 
-- **Max Weekly Hours** - each employee has a `max_weekly_hours` value (default 40, but can be set higher or lower per person via `employment_terms`); the suggestion engine will not propose a slot that pushes someone over this limit, and a manual edit that does so is flagged as a violation (not blocked)
+- **Max Weekly Hours** - each employee has a `max_weekly_hours` value (default 40, but can be set higher or lower per person via `employment_terms`); generate keeps everyone within it (the roster planner reads it as each person's maximum hours, §28), the alternatives list doesn't offer a candidate it would push over, and a manual edit that does so is flagged as a violation (not blocked)
 
 Role qualification (§11a) is deliberately **not** implemented as a `SchedulingRule` in this engine, even though it is also a constraint on automatic suggestions: it is a hard filter on the *candidate pool* the suggestion engine builds (§12.2, step 2), not a post-hoc pass/violation check on an already-chosen candidate. The distinction matters for admin overrides - a `RuleResult` violation (like exceeding max hours) is always shown as a warning on an assignment that already exists, while a qualification mismatch is either prevented from being auto-suggested in the first place, or explicitly confirmed as an override at the moment of manual assignment (§11a.4, §12.2b). Both are equally overridable by the admin, just through different UI moments.
 
-### 16.3 Future Rules (Architected, Not Implemented)
+### 16.3 Further Rules
 
-These are registered as disabled skeleton classes so they can be activated later without restructuring the engine:
+- **Min Rest Between Shifts** - implemented and enabled: at least 11 consecutive hours of rest between two shifts, also across two weeks' schedules. Dutch ATW allows reducing it to 8 hours once a week; that exception is deliberately not implemented (user decision: a fixed 11 hours).
 
-- **Min Rest Between Shifts** - Dutch ATW requires at least 11 consecutive hours of rest between shifts (reducible to 8 hours once per week)
+Still architected, not implemented - registered as disabled skeleton classes so they can be activated later without restructuring the engine:
+
 - **Consecutive Night Shifts** - a limit on how many night shifts an employee can work in a row
 - **Weekly Mandatory Rest Day** - at least one full rest day (or an equivalent rest block) per week
 
@@ -991,29 +1075,37 @@ These are registered as disabled skeleton classes so they can be activated later
 
 ## 17. Data Model Specification
 
-Core tables required:
+Tables:
 
 - `users`
 - `agencies`
 - `employees`
 - `employment_terms`
+- `employee_unavailabilities`
+- `employee_role_exclusions`
 - `lines`
+- `line_operating_closures`
+- `shift_pattern_groups`
+- `shift_patterns`
 - `scheduling_roles`
 - `employee_scheduling_roles`
-- `shift_patterns`
 - `pay_rate_surcharge_rules`
 - `schedules`
+- `schedule_status_events`
+- `schedule_acknowledgments`
 - `shift_assignments`
+- `employee_fairness_scores`
 - `leave_types`
 - `leave_requests`
+- `shift_notices`
 - `time_clock_entries`
 - `time_clock_breaks`
 - `push_subscriptions`
+- `company_settings`
 
-Optional support tables:
+Framework tables: `spatie/laravel-permission`'s roles and permissions tables, Sanctum's `personal_access_tokens`, and Laravel's `password_reset_tokens`, `sessions`, `cache`, `cache_locks`, `jobs`, `job_batches` and `failed_jobs`. Laravel's `notifications` table isn't used - notifications only go out by email and Web Push.
 
-- `notifications` (or Laravel's built-in notifications table)
-- `company_rules` (future: DB-backed company-level rule config, not required for the initial build - see §16)
+Not built: `company_rules` (a possible DB-backed company-level rule config, §16).
 
 ### 17.1 Users
 
@@ -1022,11 +1114,14 @@ Fields:
 - `id`
 - `name`
 - `email`
-- `password`
+- `password` nullable (null until an invited person sets it)
+- `invitation_token` nullable, unique; `invited_at`, `activated_at` nullable (the invitation and activation flow, §10A.6a)
 - `visibility_scope` (enum: `own`, `line`, `company`; default `own`)
-- `locale` (enum: `en`, `tr`, `nl`, `es`, `ro`, `uk`; required, chosen at registration, changeable later - see §22a)
+- `locale` (enum: `en`, `tr`, `nl`, `es`, `ro`, `uk`; required, chosen at registration, changeable later - see §21a)
 - `is_active`
 - timestamps
+
+The role (`super_admin`, `admin`, `user` - §15.2) comes from `spatie/laravel-permission`, not a column.
 
 ### 17.2 Agencies
 
@@ -1058,8 +1153,10 @@ Fields:
 - `contracted_hours_per_week` nullable decimal (used only to derive an effective hourly cost from `monthly_salary` for cost-mode ranking, §12.2 - not a payroll figure)
 - `default_line_id` nullable
 - `is_active`
+- `is_shift_lead` boolean (a shift lead gets lead shifts from the roster planner, everyone else stations - §28)
+- `notes` nullable text (admin-only notes, `PUT /employees/{employee}/notes`)
 - timestamps
-- soft deletes
+- soft deletes (`DELETE /employees/{employee}`); `DELETE /employees/{employee}/permanent` removes the row and its data (§17A.10)
 
 ### 17.4 Employment Terms
 
@@ -1086,7 +1183,7 @@ Fields:
 
 A line also has `operatingClosures` (`line_operating_closures`: `line_id`, `day_of_week` ISO 1-7, `slot_type`) marking which day/shift combinations it's simply **closed** on (default: open every day/shift; only closures are rows) - `Line::isClosedOn($isoDayOfWeek, $slotType)`, checked by `ScheduleSuggestionService` before ever considering a slot for that line/day/shift (closed is not the same as "unfilled" - it was never scheduled to run).
 
-### 17.5a Roles
+### 17.5a Roles (`scheduling_roles`)
 
 Fields:
 
@@ -1096,20 +1193,21 @@ Fields:
 - `role_kind` (enum: `station`, `secondary_task` - see §11a.2)
 - `requires_coverage` boolean (default `true` for `station`, always `false` for `secondary_task` - see §11a.3a)
 - `attachment_type` nullable (enum: `station`, `line`, `none`; only meaningful when `role_kind = secondary_task` - see §11a.2)
-- `attached_station_role_id` nullable, self-referencing FK to another `roles` row (set only when `attachment_type = station`, identifying which specific station this secondary task rides on)
+- `attached_station_role_id` nullable, self-referencing FK to another `scheduling_roles` row (set only when `attachment_type = station`, identifying which specific station this secondary task rides on)
 - `min_headcount` (integer, default `1` - stations only, §12.2 step 3's note on multi-person coverage; a secondary task/shift-lead role always just needs "at least 1 present," `min_headcount` is not meaningful for those)
 - `allows_second_person` boolean (default `false`, stations only - whether the roster planner may put one extra person on this station beyond `min_headcount`, only to fill someone's contract hours, §28.9)
 - `fairness_weight` (decimal, default `1.0` - §12.6 item 7's task-difficulty weighting; `1.0` is a no-op)
 - `is_active`
 - timestamps
 
-### 17.5b Employee Line Roles
+### 17.5b Employee Qualifications (`employee_scheduling_roles`)
 
 Fields:
 
 - `id`
 - `employee_id`
-- `role_id`
+- `scheduling_role_id`
+- `is_preferred` boolean (default `false`; stations only - one the roster planner keeps this employee on when it can, §11a.3)
 - timestamps
 
 This is the qualification pivot from §11a.3: a row means "this employee is qualified for this role" (and, transitively, for that role's line if it's line-specific).
@@ -1140,11 +1238,11 @@ A row means "this employee is not available this day-of-week + shift-type combin
 
 Fields: `id`, `employee_id`, `scheduling_role_id`, timestamps.
 
-A row means "this employee must never be assigned this role," independent of whether they're otherwise qualified (`employee_line_roles`, §17.5b) - a second, qualification-independent constraint layer for a medical/personal reason an employee should never do a specific task even if skilled at it (`Employee::isExcludedFromRole($roleId)`). Both this and an unavailability fully block automatic assignment; both are only a warning+confirm step for a manual override (§7/§12.2b).
+A row means "this employee must never be assigned this role," independent of whether they're otherwise qualified (`employee_scheduling_roles`, §17.5b) - a second, qualification-independent constraint layer for a medical/personal reason an employee should never do a specific task even if skilled at it (`Employee::isExcludedFromRole($roleId)`). Both this and an unavailability fully block automatic assignment; both are only a warning+confirm step for a manual override (§7/§12.2b).
 
 ### 17.6 Shift Patterns
 
-A `shift_pattern_groups` table (`id`, `name`, timestamps) exists purely so multiple lines can share one concrete set of hours - a line points at a group via `lines.shift_pattern_group_id` (§17.5).
+A `shift_pattern_groups` table (`id`, `name`, `is_active`, timestamps) exists purely so multiple lines can share one concrete set of hours - a line points at a group via `lines.shift_pattern_group_id` (§17.5).
 
 `shift_patterns` fields:
 
@@ -1169,10 +1267,10 @@ Fields:
 - `created_by`
 - `approved_by` nullable
 - `approved_at` nullable
-- `generated_scope` nullable jsonb (`{line_ids, slot_types, role_ids, line_slot_exclusions}` - the most recent "Generate Suggestion" call's scope; `MandatoryCoverageChecker`/§12.3b reads this to know what was "scheduled to run" for this week. A fully manual schedule that was never generated has this as `null`, and the mandatory-coverage check is a no-op for it.)
+- `generated_scope` nullable jsonb (`{line_ids, slot_types, role_ids, line_slot_exclusions, role_slot_exclusions}` - the most recent "Generate Suggestion" call's scope; `MandatoryCoverageChecker`/§12.3b reads this to know what was "scheduled to run" for this week. A fully manual schedule that was never generated has this as `null`, and the mandatory-coverage check is a no-op for it.)
 - `was_approved_before` boolean, default `false`, **never reset back to false once true** - makes `canBeGenerated()` permanently false: a schedule that's ever been approved can only be edited manually afterward (drag-and-drop/forms), never regenerated via "Generate Suggestion" again, even after `unlock()`
 - `version` integer, default `1` - incremented only when an already-approved (`was_approved_before = true`) schedule is corrected and re-approved (§12.7); a first-ever approval leaves it at 1
-- `rejection_note` nullable text - set by `reject()` (§8), cleared on the next `submitForReview()`
+- `rejection_note` nullable text - set by `reject()` (§12.3d), cleared on the next `submitForReview()`
 - timestamps
 
 More than one `Schedule` row can exist for the same `week_start_date` (parallel draft scenarios); exactly one may be `approved` for a given week at a time (`ScheduleService::approve()` enforces this).
@@ -1256,11 +1354,14 @@ Fields:
 - `is_active` (set to `false` automatically on a confirmed-expired send, §20.2a, rather than deleted - keeps a record of what existed)
 - timestamps
 
-### 17.11a Company Settings (Fairness & Rotation)
+### 17.11a Company Settings
 
-A single-row settings table (`CompanySetting::current()`), fields relevant to §12.2/§12.6's scheduling fairness/rotation logic:
+A single-row settings table (`CompanySetting::current()`):
 
 - `week_start_day` (enum: `sunday`/`monday` - which day the factory's own week begins on; all week-number/week-boundary math across the app goes through this, not a hardcoded ISO Monday)
+- `annual_leave_min_notice_days` (integer, default 14) - how far ahead an employee must request annual leave from the PWA (§13.6)
+- `shift_notice_min_notice_hours` (integer, default 2) - until how long before a shift a sick/late notice is accepted (§13b)
+- `emergency_contact_phone` nullable - the number shown when a notice comes too late (§13b)
 - `fairness_day_weight`, `fairness_afternoon_weight`, `fairness_night_weight` (decimal, default `1.00` each) - multiply an hour worked in that slot_type when accumulating `fairScores` (`CompanySetting::shiftTypeWeight()`), the recent workload that orders the alternatives offered for an open slot and spreads secondary tasks (the roster planner has its own weights below)
 - `fairness_weekday_weight`, `fairness_saturday_weight`, `fairness_sunday_weight` (decimal, default `1.00` each) - same, by day-of-week (`dayTypeWeight()`); the two multipliers combine multiplicatively (e.g. a Sunday night shift with both at 1.5x weights 2.25x)
 - `role_rotation_enabled` boolean, default `true` - §12.6 item 4; now only decides who gets a secondary task
@@ -1269,25 +1370,31 @@ A single-row settings table (`CompanySetting::current()`), fields relevant to §
 
 Removed in 2026-10 with the rule-based generator: `home_pattern_strength`, `fairness_sunday_rotation_enabled`, `fairness_premium_rotation_enabled`, `topup_leave_day_threshold` and `day_priority_order`. Their migrations were removed before the work was first committed, so the schema never had them.
 
-All fairness/rotation fields are editable only by `super_admin`, from dedicated panels on the Company Settings admin page: `PUT /company-settings/fairness-weights` and `PUT /company-settings/planner`.
+All fairness/rotation fields are editable only by `super_admin`, from dedicated panels on the Company Settings admin page: `PUT /company-settings/fairness-weights` and `PUT /company-settings/planner`. The week start, notice periods and emergency number are edited by any admin with `PUT /company-settings`; an employee reads the settings with `GET /me/company-settings`.
 
 ### 17.11b Employee Fairness Scores
 
-Fields: `id`, `employee_id`, `schedule_id`, `weighted_hours` (decimal - one blended total, no shift-type/day-type breakdown stored here), timestamps. Unique on `(employee_id, schedule_id)`.
+Fields: `id`, `employee_id`, `schedule_id`, `week_start_date` (the schedule's week, which the 8-week window is read on), `weighted_hours` (decimal - one blended total, no shift-type/day-type breakdown stored here), timestamps. Unique on `(employee_id, schedule_id)`.
 
-Written only by `ScheduleService::approve()` (`EmployeeFairnessScoreService::recordForApprovedSchedule()` - §12.6/§27) and deleted by `unlock()` (`removeForUnlockedSchedule()`); never written for a draft/proposed schedule, however many times it's regenerated. `recentScoresByEmployee()` sums this table over the last 8 weeks to seed `generate()`'s `$fairScores`.
+Written only by `ScheduleService::approve()` (`EmployeeFairnessScoreService::recordForApprovedSchedule()` - §12.6/§27) and deleted by `unlock()` (`removeForUnlockedSchedule()`); never written for a draft/proposed schedule, however many times it's regenerated. `recentScoresByEmployee()` sums the rows whose `week_start_date` is at most 8 weeks before the current week - counted from today, not from the week being planned, and with no upper bound. It seeds `generate()`'s `$fairScores` for secondary tasks, and, with the open plan's own hours added, gives the fairness points in the alternatives list (§12.2a). The roster planner reads its own history instead: the approved weeks in the 8 weeks (`planner.history_weeks`) before the week it plans (§28.9).
 
 ### 17.11c Schedule Status Events
 
 Fields: `id`, `schedule_id`, `event` (enum: `submitted`, `approved`, `rejected`, `unlocked`), `user_id`, `note` nullable, timestamps.
 
-Append-only audit trail - one row per status transition in §8's state machine, never updated or deleted.
+Append-only audit trail - one row per status transition in §12.3d's state machine, never updated or deleted.
 
 ### 17.11d Schedule Acknowledgments
 
 Fields: `id`, `schedule_id`, `employee_id`, `version` (integer, matches the `schedules.version` being acknowledged), `acknowledged_at`, timestamps. Unique on `(schedule_id, employee_id, version)`.
 
 §12.7's acknowledgment tracking - acknowledging version 1 does not satisfy version 2's requirement, so a second correction re-opens this for every assignee again. Written only via the self-service "I've seen it" action (idempotent - re-acknowledging the same version is a no-op, not an error).
+
+### 17.11e Shift Notices
+
+Fields: `id`, `employee_id`, `shift_assignment_id` (cascade delete), `type` (enum: `sick`, `late`), `delay_minutes` nullable (required for `late`), `note` nullable, `status` (enum: `submitted`, `acknowledged`; default `submitted`), `acknowledged_by` nullable (FK to `users`, `nullOnDelete`), `acknowledged_at` nullable, timestamps. Index on `(employee_id, status)`.
+
+§13b's notices. There is no endpoint to edit or withdraw one; an admin only acknowledges it.
 
 ---
 
@@ -1299,7 +1406,7 @@ Constraints:
 
 - `email` must be unique
 - `visibility_scope` defaults to `own`
-- `locale` required, must be one of the six supported codes (`en`, `tr`, `nl`, `es`, `ro`, `uk`); no default - it is chosen explicitly at registration (§22a)
+- `locale` required, must be one of the six supported codes (`en`, `tr`, `nl`, `es`, `ro`, `uk`); no default - it is chosen when the invitation is completed (§10A.6a, §21a)
 - `is_active` defaults to `true`
 
 Indexes:
@@ -1363,7 +1470,7 @@ Indexes:
 
 - unique index on `code`
 
-### 17A.5a Roles
+### 17A.5a Roles (`scheduling_roles`)
 
 Constraints:
 
@@ -1378,23 +1485,24 @@ Constraints:
 Indexes:
 
 - foreign key on `line_id` with cascade delete (a role scoped to a line makes no sense once that line is gone; a line-independent role is unaffected since `line_id` is null)
-- foreign key on `attached_station_role_id` referencing `roles.id`, with cascade delete (a secondary task attached to a specific station makes no sense once that station role is removed)
+- foreign key on `attached_station_role_id` referencing `scheduling_roles.id`, with cascade delete (a secondary task attached to a specific station makes no sense once that station role is removed)
 - index on `line_id`
 - index on `(role_kind, requires_coverage)` (used when checking mandatory-coverage compliance before approval, §11a.3a)
 - index on `attached_station_role_id`
 
-### 17A.5b Employee Line Roles
+### 17A.5b Employee Qualifications (`employee_scheduling_roles`)
 
 Constraints:
 
-- a given `(employee_id, role_id)` pair must be unique - an employee is either qualified for a role or not, no duplicate rows
+- a given `(employee_id, scheduling_role_id)` pair must be unique - an employee is either qualified for a role or not, no duplicate rows
+- `is_preferred` may only be set on a station row - enforced at the application layer (`SyncQualificationsRequest`)
 
 Indexes:
 
-- unique composite index on `(employee_id, role_id)`
+- unique composite index on `(employee_id, scheduling_role_id)`
 - foreign key on `employee_id` with cascade delete
-- foreign key on `role_id` with cascade delete
-- index on `role_id` (to efficiently look up "who is qualified for this role" when building the suggestion candidate pool, §12.2)
+- foreign key on `scheduling_role_id` with cascade delete
+- index on `scheduling_role_id` (to efficiently look up "who is qualified for this role" when building the suggestion candidate pool, §12.2)
 
 ### 17A.5c Pay Rate Surcharge Rules
 
@@ -1513,8 +1621,8 @@ Indexes:
 
 ### 17A.10 Referential and Deletion Rules
 
-- deleting an employee must cascade to their own `shift_assignments`, `employment_terms`, `leave_requests`, and `employee_line_roles` (historical schedule data for other employees must remain intact)
-- deleting a line must not be allowed while active `shift_assignments` reference it (`restrictOnDelete`) - deactivate instead of deleting; deleting a line does cascade-delete its line-specific `roles` (and, transitively, their `employee_line_roles`), since a role scoped to a deleted line no longer means anything
+- an employee is normally soft-deleted. Deleting one permanently cascades to all their own rows - `shift_assignments`, `employment_terms`, `leave_requests`, `employee_scheduling_roles`, `employee_unavailabilities`, `employee_role_exclusions`, `shift_notices`, `time_clock_entries`, `push_subscriptions`, `schedule_acknowledgments` and `employee_fairness_scores` (historical schedule data for other employees must remain intact)
+- deleting a line must not be allowed while active `shift_assignments` reference it (`restrictOnDelete`) - deactivate instead of deleting; deleting a line does cascade-delete its line-specific `scheduling_roles` (and, transitively, their `employee_scheduling_roles`), since a role scoped to a deleted line no longer means anything
 - deleting a shift pattern should not destroy historical assignment records; prefer `nullOnDelete` so history remains stable
 - deleting an agency must not cascade-delete its employees; use `nullOnDelete` on `employees.agency_id` and require the admin to reassign or deactivate those employees explicitly
 - deleting a role should not destroy historical assignment records that reference it; prefer `nullOnDelete` on `shift_assignments.role_id` (the assignment's line/date/employee stays meaningful even if the specific role label is later removed)
@@ -1534,27 +1642,33 @@ Use later additive migrations only for true versioned evolution after the initia
 
 ## 18. API Specification
 
-All endpoints are under `Route::prefix('v1')->middleware('auth:sanctum')`, controllers under `App\Http\Controllers\Api\V1\*`, except authentication endpoints.
+Every endpoint is under `/api/v1` (`backend/routes/api.php`), its controller in its module (`App\Modules\<Module>\Http\Controllers`). All need a Sanctum token except login and completing an invitation. The `/me/...` endpoints are for any logged-in account linked to an employee (403 when none is linked); the rest need the `admin` or `super_admin` role, and a few `super_admin` alone (marked). Paths below leave out the `/api/v1` prefix.
 
-### 18.1 Authentication
+### 18.1 Authentication & Users
 
-- `POST /v1/auth/login`
-- `POST /v1/auth/logout`
-- `GET /v1/auth/me`
+- `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`
+- `POST /auth/complete-invitation` - public: `token` (from the invitation email), `password` + `password_confirmation`, `locale` (§10A.6a)
+- `POST /users/invite` - `name`, `email`, optional `employee_id` to link right away; sends `UserInvited`
+- `POST /users/{user}/activate` - activates an account that has set its password
+- `GET /users` - `unlinked=true` (no employee linked yet - the link-account picker, §10A.3), `pending_activation=true` (password set, waiting for activation), `search` (name or email); at most 20 results
+- `PUT /users/{user}/visibility-scope` (§15.2)
 
 ### 18.2 Staff & Agencies
 
-- `GET|POST /v1/agencies`
-- `GET|PUT|DELETE /v1/agencies/{agency}`
-- `GET|POST /v1/employees`
-- `GET|PUT|DELETE /v1/employees/{employee}`
-- `GET|PUT /v1/employees/{employee}/employment-terms`
-- `PUT /v1/employees/{employee}/user` - link an existing user account to this employee (§11.2a); body `{ "user_id": 42 }`
-- `DELETE /v1/employees/{employee}/user` - unlink the currently linked account, if any
-- `GET /v1/users?unlinked=true&search=...` - search users not yet linked to any employee, for the link-account picker (§10A.3)
-- `PUT /v1/users/{user}/visibility-scope`
+- `GET|POST /agencies`, `GET|PUT|DELETE /agencies/{agency}`
+- `GET|POST /employees`, `GET|PUT|DELETE /employees/{employee}` - `DELETE` soft-deletes
+- `DELETE /employees/{employee}/permanent` - deletes the employee and their data for good (§17A.10)
+- `GET|PUT /employees/{employee}/employment-terms`
+- `PUT /employees/{employee}/user` - link an existing user account to this employee (§11.2a); body `{ "user_id": 42 }`
+- `DELETE /employees/{employee}/user` - unlink the currently linked account, if any
+- `PUT /employees/{employee}/unavailability` - `unavailable_slots: [{ day_of_week, slot_type }]`, replacing the current ones (§17.5d)
+- `PUT /employees/{employee}/role-exclusions` - `scheduling_role_ids`, replacing the current ones (§17.5e)
+- `PUT /employees/{employee}/notes` - `notes` (at most 5000 characters)
+- `PUT /employees/{employee}/qualified-roles` - see §18.3
 
-#### Example: `GET /v1/employees`
+The unavailability, role-exclusion and notes endpoints answer with the whole employee.
+
+#### Example: `GET /employees`
 
 Query params:
 
@@ -1564,7 +1678,7 @@ Query params:
 - `is_active`
 - `has_account` (`true`|`false` - filters by whether `user_id` is set; `false` powers both the staff list badge and the dashboard count from §11.2b)
 
-Response example:
+Response example (one employee, shortened):
 
 ```json
 {
@@ -1573,31 +1687,37 @@ Response example:
       "id": 12,
       "first_name": "Ahmet",
       "last_name": "Yilmaz",
+      "phone": null,
+      "email": null,
       "employee_type": "uitzendkracht",
       "agency": { "id": 3, "name": "VZM", "code": "VZM" },
-      "default_line": { "id": 2, "name": "Lijn 2", "code": "L2" },
-      "employment_terms": { "max_weekly_hours": 40 },
       "pay_type": "hourly",
-      "hourly_rate": 18.5,
-      "is_active": true
+      "hourly_rate": "18.50",
+      "monthly_salary": null,
+      "contracted_hours_per_week": "40.00",
+      "default_line_id": 2,
+      "employment_terms": { "min_weekly_hours": 40, "max_weekly_hours": 40 },
+      "has_account": false,
+      "user_id": null,
+      "is_active": true,
+      "is_shift_lead": false
     }
   ]
 }
 ```
 
+The detail (`GET /employees/{employee}`) also carries `qualified_role_ids`, `preferred_role_ids`, `unavailable_slots`, `excluded_role_ids` and `notes`.
+
 ### 18.3 Lines, Roles & Shift Patterns
 
-- `GET|POST /v1/lines`
-- `GET|PUT|DELETE /v1/lines/{line}`
-- `GET|POST /v1/roles`
-- `GET|PUT|DELETE /v1/roles/{role}`
-- `GET|PUT /v1/employees/{employee}/qualified-roles` (list/replace an employee's `employee_line_roles`, §11a.3)
-- `GET|POST /v1/shift-patterns`
-- `GET|PUT|DELETE /v1/shift-patterns/{shiftPattern}`
-- `GET|POST /v1/pay-rate-surcharge-rules` (§11.2c)
-- `GET|PUT|DELETE /v1/pay-rate-surcharge-rules/{payRateSurchargeRule}`
+- `GET|POST /lines`, `GET|PUT|DELETE /lines/{line}` - `DELETE` deactivates; `DELETE /lines/{line}/permanent` deletes (§17A.10)
+- `GET|POST /roles`, `GET|PUT|DELETE /roles/{role}` - `DELETE` deactivates; `DELETE /roles/{role}/permanent` deletes
+- `PUT /employees/{employee}/qualified-roles` (replace an employee's qualified roles, §11a.3: `role_ids`, and optionally `preferred_role_ids` - stations among them; left out, the preferred ones stay as they are). The current ones come with `GET /employees/{employee}` as `qualified_role_ids` and `preferred_role_ids`
+- `GET|POST /shift-pattern-groups`, `GET|PUT|DELETE /shift-pattern-groups/{group}` - a group is saved with its three shifts at once: `name`, and `slots.day`, `slots.afternoon`, `slots.night`, each with `start_time`, `end_time`, `crosses_midnight` (§17.6)
+- `GET|POST /shift-patterns`, `GET|PUT|DELETE /shift-patterns/{shiftPattern}`
+- `GET|POST /pay-rate-surcharge-rules`, `GET|PUT|DELETE /pay-rate-surcharge-rules/{payRateSurchargeRule}` (§11.2c)
 
-#### Example: `POST /v1/pay-rate-surcharge-rules`
+#### Example: `POST /pay-rate-surcharge-rules`
 
 Request example:
 
@@ -1623,7 +1743,7 @@ A night-hours example spanning midnight:
 }
 ```
 
-#### Example: `POST /v1/roles`
+#### Example: `POST /roles`
 
 Request example:
 
@@ -1632,13 +1752,14 @@ Request example:
   "name": "Dough Prep - Line 3",
   "line_id": 3,
   "role_kind": "station",
-  "requires_coverage": true
+  "requires_coverage": true,
+  "min_headcount": 1
 }
 ```
 
-`requires_coverage` is rejected by validation if `role_kind` is `"secondary_task"` (§17A.5a) - a secondary task is never independently mandatory.
+`requires_coverage` is rejected by validation if `role_kind` is `"secondary_task"` (§17A.5a) - a secondary task is never independently mandatory. Optional too: `allows_second_person` (§17.5a), `fairness_weight` (0.1-9.99, §12.6 item 7), `is_active`.
 
-#### Example: `POST /v1/roles` (line-attached secondary task)
+#### Example: `POST /roles` (line-attached secondary task)
 
 Request example:
 
@@ -1655,61 +1776,19 @@ A `station`-attached example would instead set `"attachment_type": "station"` an
 
 ### 18.4 Leave
 
-- `GET|POST /v1/leave-types`
-- `GET|POST /v1/leave-requests`
-- `GET|PUT|DELETE /v1/leave-requests/{leaveRequest}`
-- `POST /v1/leave-requests/{leaveRequest}/approve`
-- `POST /v1/leave-requests/{leaveRequest}/reject`
+- `GET|POST /leave-types`
+- `GET|POST /leave-requests`, `GET|PUT|DELETE /leave-requests/{leaveRequest}`
+- `POST /leave-requests/{leaveRequest}/approve`
+- `POST /leave-requests/{leaveRequest}/reject`
 
-### 18.4b Time & Attendance
-
-- `POST /v1/time-clock-entries/import` (§13a.4) - multipart file upload; body also carries `shape` (`simple`|`detailed`) and the column-mapping the admin selected
-- `GET /v1/time-clock-entries` (filterable by `employee_id`, date range)
-- `GET|PUT|DELETE /v1/time-clock-entries/{timeClockEntry}` (manual review/correction, §13a.4)
-
-#### Example: `POST /v1/time-clock-entries/import`
-
-Request example (multipart form, shown as the non-file fields):
-
-```json
-{
-  "shape": "detailed",
-  "column_mapping": {
-    "employee_identifier": "Personeelsnummer",
-    "date": "Datum",
-    "event_time": "Tijd",
-    "event_type": "Type"
-  }
-}
-```
-
-Response example:
-
-```json
-{
-  "data": {
-    "imported": 214,
-    "skipped": 3,
-    "errors": [
-      {
-        "row": 47,
-        "reason": "No employee found matching identifier \"9981\"."
-      },
-      {
-        "row": 112,
-        "reason": "clock_out is before clock_in."
-      }
-    ]
-  }
-}
-```
+An employee's own requests are `/me/leave-requests` (§18.7).
 
 ### 18.4a Push Subscriptions
 
-- `POST /v1/push-subscriptions` - register a subscription for the current employee (§20.2a)
-- `DELETE /v1/push-subscriptions/{pushSubscription}` - explicitly unregister one (e.g. from a "disable notifications" control in settings)
+- `POST /me/push-subscriptions` - register a subscription for the current employee (§20.2a)
+- `DELETE /me/push-subscriptions/{pushSubscription}` - explicitly unregister one (e.g. from a "disable notifications" control in settings)
 
-#### Example: `POST /v1/push-subscriptions`
+#### Example: `POST /me/push-subscriptions`
 
 Request example (the shape returned by the browser's `PushSubscription.toJSON()`):
 
@@ -1723,79 +1802,120 @@ Request example (the shape returned by the browser's `PushSubscription.toJSON()`
 }
 ```
 
-### 18.5 Scheduling
+### 18.4b Time & Attendance
 
-- `GET|POST /v1/schedules`
-- `GET /v1/schedules/{schedule}`
-- `POST /v1/schedules/{schedule}/suggest`
-- `POST /v1/schedules/{schedule}/approve`
-- `GET|POST /v1/schedules/{schedule}/assignments`
-- `PUT|DELETE /v1/shift-assignments/{assignment}`
-- `GET /v1/schedules/{schedule}/slots/{line}/{role}/{workDate}/candidates` - ranked alternative-candidates list for one slot (§12.2a), query param `ranking_mode` (`fair`|`cost`)
+- `POST /time-clock-imports/preview` - multipart: `file` (csv, txt, xlsx or xls, at most 10 MB) and `shape` (`simple`|`detailed`); answers `{ "import_token": "...", "headers": ["Personeelsnummer", "Datum", "Tijd", "Type"] }` so the admin can map the columns (§13a.4)
+- `POST /time-clock-imports/commit` - `import_token`, `shape` and `column_mapping`
+- `GET|POST /time-clock-entries` (filters `employee_id`, `date_from`, `date_to`), `GET|PUT|DELETE /time-clock-entries/{timeClockEntry}` (manual review/correction, §13a.4)
 
-#### Example: `POST /v1/schedules/{schedule}/suggest`
+#### Example: `POST /time-clock-imports/commit`
 
 Request example:
 
 ```json
 {
-  "line_ids": [1, 2, 3],
-  "shift_pattern_ids": [1, 2, 3, 4, 5, 6],
-  "ranking_mode": "cost"
+  "import_token": "<from the preview>",
+  "shape": "detailed",
+  "column_mapping": {
+    "employee_identifier": "Personeelsnummer",
+    "work_date": "Datum",
+    "event_time": "Tijd",
+    "event_type": "Type"
+  }
 }
 ```
 
-`ranking_mode` is `"fair"` or `"cost"` (see §12.2); defaults to `"fair"` if omitted.
+The `simple` shape maps `clock_in`, `clock_out` and optionally `break_minutes` instead of `event_time`/`event_type`.
 
 Response example:
 
 ```json
 {
   "data": {
-    "schedule_id": 14,
-    "status": "proposed",
-    "assignments_created": 61,
-    "violations": [
-      {
-        "employee_id": 12,
-        "work_date": "2026-08-04",
-        "rule": "MaxWeeklyHoursRule",
-        "severity": "warning",
-        "message": "This assignment would put Ahmet Yilmaz at 44 hours this week (limit: 40)."
-      }
-    ],
-    "unfilled_slots": [
-      {
-        "line_id": 3,
-        "role_id": 9,
-        "role_name": "Dough Prep - Line 3",
-        "work_date": "2026-08-05",
-        "shift_pattern_id": 4,
-        "reason": "no_qualified_candidate",
-        "blocking": true
-      }
+    "imported_count": 214,
+    "error_count": 2,
+    "errors": [
+      { "row": 47, "error_code": "...", "message": "No employee found matching identifier \"9981\"." },
+      { "row": 112, "error_code": "...", "message": "clock_out is before clock_in." }
     ]
   }
 }
 ```
 
-`blocking: true` means this slot's role has `requires_coverage = true` (§11a.3a) - the schedule cannot be approved (§12.3b) until it is resolved. `blocking: false` is advisory only.
+### 18.5 Scheduling
 
-#### Example: `PUT /v1/shift-assignments/{assignment}` (manual time-split)
+- `GET|POST /schedules` - every plan; create an empty draft (`week_start_date`, optional `label`, `note`)
+- `GET|PUT|DELETE /schedules/{schedule}` - `PUT` changes `label`/`note`; only a draft can be deleted
+- `POST /schedules/suggest`, `GET /schedules/suggest/{run}` - generate, on the queue (§28.11)
+- `POST /schedules/{schedule}/submit`; `POST /schedules/{schedule}/approve`, `/reject` (`note` required), `/unlock` (optional `note`) - super_admin only (§12.3d)
+- `GET /schedules/{schedule}/acknowledgments` - who has seen the current version (§12.7)
+- `GET /schedules/{schedule}/alternative-candidates` - who could take a slot (§12.2a)
+- `POST /shift-assignments`, `PUT|DELETE /shift-assignments/{assignment}`, `PATCH /shift-assignments/{assignment}/move` (§27.4)
+
+A schedule (`GET /schedules/{schedule}`) carries `id`, `week_start_date`, `label`, `note`, `status`, `created_by`, `approved_by`, `approved_at`, `generated_scope`, `was_approved_before`, `version`, `rejection_note`, `unfilled_slots` (computed live on every read: each open slot, `blocking` when it is a mandatory station - §12.3b) and `assignments`.
+
+#### Example: `POST /schedules/suggest`
 
 Request example:
 
 ```json
 {
+  "week_start_date": "2026-11-15",
+  "schedule_id": 30,
+  "line_ids": [1, 2],
+  "slot_types": ["day", "afternoon", "night"],
+  "role_ids": null,
+  "ranking_mode": "fair",
+  "line_slot_exclusions": [{ "line_id": 2, "day_of_week": 6, "slot_type": "day" }],
+  "role_slot_exclusions": [{ "role_id": 18, "day_of_week": 7, "slot_type": null }]
+}
+```
+
+- `schedule_id` regenerates that draft (its manual assignments stay, §27.1); without it a new draft is created
+- `role_ids` limits generate to these roles; null means all
+- `ranking_mode` is `"fair"` or `"cost"` (§28.10)
+- `line_slot_exclusions`: a line's shift that doesn't run that weekday (ISO 1-7); `role_slot_exclusions`: a role not needed that weekday, on one shift or (`slot_type` null) all day
+
+Response (202):
+
+```json
+{ "run": { "id": "<uuid>", "status": "queued", "message": null, "schedule": null } }
+```
+
+`GET /schedules/suggest/{run}` answers the same shape: `running`, then `completed` with `schedule` (rendered like `GET /schedules/{schedule}`), or `failed` with the reason in `message`. A run is kept for an hour; after that it answers 404.
+
+#### Example: `PUT /shift-assignments/{assignment}` (manual time-split)
+
+Request example (`PUT` takes the whole assignment):
+
+```json
+{
+  "employee_id": 12,
+  "line_id": 1,
+  "shift_pattern_id": 4,
+  "work_date": "2026-11-18",
   "role_id": 11,
   "starts_at": "08:00",
   "ends_at": "10:00"
 }
 ```
 
-This narrows an existing 08:00-16:00 assignment down to its first two hours, freeing the employee to hold a different station for the remainder of the shift via a second assignment row (§11a.3b) - rejected by validation if it would overlap another station assignment for the same employee and day.
+This narrows an existing 08:00-16:00 assignment down to its first two hours, freeing the employee to hold a different station for the remainder of the shift via a second assignment row (§11a.3b) - rejected by validation if it would overlap another station assignment for the same employee and day. `POST /shift-assignments` takes the same fields plus `schedule_id`; `PATCH .../move` takes `line_id`, `shift_pattern_id` and `work_date`. Each also accepts `notes` and `confirm_override`, and answers:
 
-#### Example: `GET /v1/schedules/{schedule}/slots/3/9/2026-08-05/candidates?ranking_mode=cost`
+```json
+{
+  "assignment": { "id": 5894, "...": "..." },
+  "rule_results": [
+    { "rule_key": "max_weekly_hours", "status": "violation", "message": "..." }
+  ]
+}
+```
+
+A violation never blocks the write (§27.3).
+
+#### Example: `GET /schedules/{schedule}/alternative-candidates`
+
+Query params: `line_id`, `shift_pattern_id` (null for a flexible-hours role), `work_date`, `role_id`, `ranking_mode` (`fair`|`cost`), and optionally `starts_at`/`ends_at` (the hours a flexible-hours role, or overridden hours, would get).
 
 Response example:
 
@@ -1803,33 +1923,63 @@ Response example:
 {
   "data": [
     {
-      "employee_id": 27,
-      "name": "Elif Demir",
-      "qualified": false,
-      "exclusion_reason": "Not qualified for Dough Prep - Line 3",
-      "effective_hourly_cost": 17.0,
-      "hours_so_far_this_week": 24
+      "employee": { "id": 12, "first_name": "Ahmet", "last_name": "Yilmaz" },
+      "score": 202,
+      "qualified": true,
+      "rule_compliant": true,
+      "exclusion_reason": null,
+      "violates_employee_constraint": false,
+      "week_hours": 32,
+      "contract_hours": { "min": 40, "max": 40 }
     },
     {
-      "employee_id": 12,
-      "name": "Ahmet Yilmaz",
-      "qualified": true,
-      "exclusion_reason": "Would exceed max weekly hours (44 > 40)",
-      "effective_hourly_cost": 18.5,
-      "hours_so_far_this_week": 40
+      "employee": { "id": 27, "first_name": "Elif", "last_name": "Demir" },
+      "score": null,
+      "qualified": false,
+      "rule_compliant": true,
+      "exclusion_reason": "Not qualified for Dough Prep - Line 3",
+      "violates_employee_constraint": false,
+      "week_hours": 24,
+      "contract_hours": { "min": 32, "max": 40 }
     }
   ]
 }
 ```
 
-Candidates are ranked by the requested `ranking_mode`; `qualified: false` candidates are still listed (per §11a.4, the admin can override), always alongside their exclusion reason so the planner knows exactly what they'd be overriding.
+Every active employee is listed, the eligible ones first, by `score` then employee id; the others follow with their `exclusion_reason` so the planner knows exactly what they'd be overriding (§11a.4). `score` is the fairness points in fair mode (§17.11b) or this shift's cost with surcharges in cost mode, and null for a candidate who isn't eligible. `week_hours` is what this plan already gives them this week, a shift and its tasks counted once; `contract_hours` comes from their employment terms. Whoever already holds that exact slot is left out.
 
 ### 18.6 Reports
 
-- `GET /v1/reports/weekly-headcount?week_start=...`
-- `GET /v1/reports/cost-breakdown?week_start=...&end=...`
-- `GET /v1/reports/export/pdf?...`
-- `GET /v1/reports/export/excel?...`
+- `GET /reports?start_date=...&end_date=...` - headcount and cost for the period (§14)
+- `GET /reports/export/pdf?start_date=...&end_date=...`
+- `GET /reports/export/excel?start_date=...&end_date=...`
+
+### 18.7 Employee Self-Service (`/me`)
+
+- `GET /me/schedule` - optional `week_start_date` (default: this week) and `weeks` (1-6, for the month view); answers `visibility_scope`, the `assignments` of the range by that scope, and the employee's own approved `leave_days` and `shift_notices`
+- `GET /me/profile`
+- `GET /me/company-settings` - the same settings as `GET /company-settings`; the PWA uses the week start, notice periods and emergency number
+- `GET|POST /me/leave-requests` - own requests; a new one is always Vakantie (§13.6)
+- `GET /me/shift-notices/eligibility?shift_assignment_id=...`, `POST /me/shift-notices` (§13b)
+- `GET /me/pending-acknowledgments`, `POST /me/schedules/{schedule}/acknowledge` (§12.7)
+- `POST /me/push-subscriptions`, `DELETE /me/push-subscriptions/{pushSubscription}` (§18.4a)
+
+#### Example: `POST /me/shift-notices`
+
+```json
+{ "shift_assignment_id": 5894, "type": "late", "delay_minutes": 30, "note": "Train delayed" }
+```
+
+Refused (422 on `shift_assignment_id`) when the shift is less than `shift_notice_min_notice_hours` away.
+
+### 18.8 Shift Notices, Dashboard & Company Settings
+
+- `GET /shift-notices` - filters `status`, `employee_id`, `type`; paginated, submitted ones first (§13b)
+- `POST /shift-notices/{shiftNotice}/acknowledge`
+- `GET /dashboard/summary` - the counts, pending items, this week's plans and who is on leave (§10A.1)
+- `GET /dashboard/planning-calendar?weeks_before=...&weeks_after=...` - each week's plans (defaults 4 and 4, at most 52; the dashboard asks 2 and 6)
+- `GET|PUT /company-settings` - week start, notice periods, emergency number
+- `PUT /company-settings/fairness-weights`, `PUT /company-settings/planner` - super_admin only (§17.11a, §28.10)
 
 ---
 
@@ -1870,14 +2020,14 @@ The product should not hardcode which rules are active in code paths outside con
 
 ### 20.1 Trigger Rules
 
-- fires when a `shift_assignment` belonging to an **approved** schedule is created, edited, or deleted (`ScheduleChanged`)
+- `ShiftAssignmentService` calls `notifyAssignmentChanged()` on every create, edit, move and delete, which sends `ScheduleChanged` only when the schedule is **approved**. Since only a draft can be edited (§12.3d), it doesn't fire in practice: a change to a published week reaches its employees as `ScheduleCorrected` when it is approved again (§12.7)
 - fires once at the moment a schedule transitions to `approved` (for every employee with an assignment in it) - `ScheduleChanged` on a schedule's first-ever approval, or the distinct `ScheduleCorrected` notification (names the version number, links to the acknowledgment flow - §12.7) when `schedules.was_approved_before` was already true, i.e. this is a correction being re-approved. Never both for the same approval.
 - does **not** fire for draft/proposed edits
-- an account-invite notification (`AccountInvited`) and a shift-notice/leave-approved notification exist alongside these for other triggers (account activation, §10A.6a; leave approval) - §20.2's channel rules apply to all of them equally
+- the account invitation (`UserInvited`, §10A.6a) is the only other notification, and goes by email only. Leave decisions and shift notices send none - employees see their leave on the PWA, and admins see shift notices on the dashboard (§13b)
 
 ### 20.2 Channels
 
-- **Email**: Laravel's built-in mail (`Notification` with `toMail`)
+- **Email**: Laravel's built-in mail (`Notification` with `toMail`). Recipients on `MAIL_BLOCKED_DOMAINS` (the made-up addresses of demo accounts) are dropped before sending by `BlockedMailDomainFilter`, a `MessageSending` listener, so they never bounce; a message left without recipients isn't sent
 - **Push**: Web Push (the standard browser/OS push protocol), via a custom notification channel built on the `web-push` PHP library (VAPID-authenticated, no third-party notification vendor or account required), queued
 
 Both channels fire together for every notification; there is no per-employee channel preference in the initial build. Email always fires if the employee has one on file. Push fires to every active push subscription the employee has registered (potentially more than one, if they installed the PWA on more than one device) - see §20.2a.
@@ -1918,6 +2068,7 @@ Both channels fire together for every notification; there is no per-employee cha
 - `vite-plugin-pwa` integrated into the frontend build
 - a web app manifest (name, icons, theme color matching §7.2)
 - a service worker caching the employee schedule view and its current week's data
+- updates: `registerType: 'prompt'`, with no update prompt yet - a new deploy only shows once every tab and the installed app are closed, or after a hard reload (§26)
 - a service worker `push` event handler that displays a system notification when a `ScheduleChanged` push arrives (§20), and a `notificationclick` handler that opens the app to the affected week
 - a notification-permission prompt shown once, after first login, with plain-language copy explaining what it's for (§20.3) - not on page load, and not repeated if the employee dismisses or denies it (a manual "enable notifications" control remains available in settings for someone who wants to opt in later)
 
@@ -1985,6 +2136,10 @@ Both notification channels (§20) are plain, freely-authored content controlled 
 - a rule-violation message, and an email/push notification, are generated in the recipient's stored `locale`, not the admin's or the sender's
 - adding a UI string without a translation entry for all six locales should be caught in code review/CI (e.g. a lint step comparing locale JSON key sets), not discovered by a user seeing an untranslated key
 
+### 21a.7 Known Issue (Open)
+
+- **The UI doesn't follow the user's language.** `src/lib/i18n.ts` starts i18next with `lng: 'en'` and nothing switches it, so every screen shows English although all six translation files exist. There is no locale switcher and no endpoint to change `users.locale` after the invitation is completed, and the API answers in the default locale (no locale middleware). Email and Web Push notifications do use `users.locale` (§21a.5). Several screens also still have hard-coded English text, e.g. the assignment form and the "who else" panel (found while checking this document against the code, 2026-11-20).
+
 ---
 
 ## 22. Non-Functional Requirements
@@ -2037,6 +2192,7 @@ Both notification channels (§20) are plain, freely-authored content controlled 
 - a role is created as a station or a secondary task, and `requires_coverage` is only ever configurable for stations
 - an employee qualified for a line-specific role on one line is never treated as qualified for the identically-named role on a different line
 - an admin can view and edit an employee's qualified roles from the staff detail screen
+- an employee's preferred stations keep them on that station, or its line, when generating; they still work elsewhere when a shift would go uncovered, or to keep one shift type a week or fill their contract hours
 - an admin can still manually assign an unqualified employee to a slot, with a required, visible confirmation step
 - a mandatory-coverage station left unfilled blocks schedule approval, with the blocking slot(s) clearly identified
 - an employee can be manually given a time-split across two different stations within one shift, and can hold a secondary task alongside a station, but can never be double-booked on two overlapping stations
@@ -2110,7 +2266,7 @@ Recommended implementation order:
 
 1. project skeleton: Laravel API setup, PostgreSQL, Sanctum, `spatie/laravel-permission` + role/visibility-scope seeding, React+Vite+TS skeleton, `react-i18next` + Laravel localization wired in from the start with `locale` on registration (§21a), login. The account-creation screen's layout (identity fields + language selector) is built here, but its install-prompt section (§21.2a, §10A.6a) is a placeholder until step 7 - a working `beforeinstallprompt` listener needs the PWA manifest that doesn't exist yet, so wire it up properly in step 7 rather than half-building it twice.
 2. staff & agencies module (employees, employment terms, agencies) - migrations, models, controllers, resources, admin frontend screens
-3. lines, roles & shift patterns module - migrations, models, controllers, resources, admin frontend screens, including `roles` (station vs. secondary task, `requires_coverage`) and `employee_line_roles` (§11a), the qualified-roles editor on the staff detail screen, and `pay_rate_surcharge_rules` (§11.2c) with its admin screen
+3. lines, roles & shift patterns module - migrations, models, controllers, resources, admin frontend screens, including `scheduling_roles` (station vs. secondary task, `requires_coverage`) and `employee_scheduling_roles` (§11a), the qualified-roles editor on the staff detail screen, and `pay_rate_surcharge_rules` (§11.2c) with its admin screen
 4. leave & sick tracking module - migrations, models, controllers, approval flow, admin frontend screens
 5. weekly scheduling core: `schedules`, `shift_assignments` (including `starts_at`/`ends_at` time-split support, §11a.3b), rule engine (`MaxWeeklyHoursRule` + disabled skeletons), `ScheduleSuggestionService` (with `ranking_mode`: fair/cost, and role-qualification filtering per §12.2), suggest/approve endpoints, mandatory-coverage approval blocking (§12.3b), admin schedule grid with drag-and-drop (§12.3a), unfilled-slot flagging and the alternative-candidates lookup (§12.2a, §12.2b)
 6. time & attendance module (§13a): `time_clock_entries`/`time_clock_breaks` migrations/models, the Simple and Detailed CSV/Excel import parsers, employee/date auto-matching against `shift_assignments`, the import screen with column mapping and per-row error reporting, and manual-correction editing
@@ -2140,11 +2296,12 @@ The build is successful when:
 
 ## 26. Open Items (Require a Follow-Up Decision, Do Not Block Build Start)
 
-- ~~**Employee self-service leave requests**~~ - **Resolved, built.** Employees can submit Vakantie/Ziek/Short Excuse requests from the PWA (§15); §13.5 layers an additional creation-time restriction on top for Vakantie against an already-approved week.
+- ~~**Employee self-service leave requests**~~ - **Resolved, built.** Employees request annual leave (Vakantie) from the PWA at least `annual_leave_min_notice_days` ahead (§13.6), and report sick or late for one shift with a shift notice (§13b); Ziek and Short Excuse date ranges are entered by an admin. §13.5 layers an additional creation-time restriction on top for Vakantie against an already-approved week.
 - ~~**Required headcount per line/shift/role/day**~~ - **Resolved, built.** `scheduling_roles.min_headcount` (§17.5a) is a per-role field, admin-set from the Roles screen - not a per-week configurable input.
 - **Notification scope for `line`/`company`-visibility employees**: still open - whether a change to a colleague's shift (not the viewing employee's own shift) should also trigger a notification to employees with `line`/`company` visibility, or whether notifications stay strictly "your own assignment changed."
 - **Bulk qualification assignment**: still open - whether roles can only be granted one employee at a time from the staff detail screen, or whether a "assign this role to multiple employees at once" screen is needed for faster onboarding.
 - ~~**Roster planner weekend policy (§28.4)**~~ - **Resolved:** a super_admin setting (`planner_weekend_policy`, §28.10), defaulting to `fair`.
+- **PWA update prompt**: still open - whether the app shows "a new version is available - reload" after a deploy (`onNeedRefresh` plus a `SKIP_WAITING` message in `sw.ts`), instead of waiting for every tab to close (§21.2).
 
 ---
 
@@ -2152,7 +2309,7 @@ The build is successful when:
 
 This section was previously a separate document (`docs/scheduling-algorithm.md`), folded in here per the "one document" rule in §1. It's a code-level companion to §12 (what the algorithm does) and §12.6 (the fairness/rotation layer specifically) - §12/§12.6/§12.3c/§12.7 are the authoritative behavior spec; this section explains *where in the code* that behavior lives and names a few implementation details (file paths, exact method names) that are useful for anyone changing the algorithm but aren't product requirements in their own right.
 
-**Primary files:** `backend/app/Modules/Scheduling/Services/ScheduleSuggestionService.php` (the `generate()` engine), `SlotCandidateRanker.php` (candidate ranking), `MandatoryCoverageChecker.php` (§12.3b), `LeaveConflictChecker.php` (§12.3c), `EmployeeFairnessScoreService.php` / `RoleRotationService.php` (§12.6), `ShiftAssignmentService.php` (manual create/update/move/delete), `ScheduleService.php` (§8/§12.7's status machine), `ScheduleAcknowledgmentService.php` (§12.7). All scoped under `app/Modules/Scheduling`, `Lines`, `Staff`, `CompanySettings`.
+**Primary files:** `backend/app/Modules/Scheduling/Services/ScheduleSuggestionService.php` (the `generate()` engine), `SlotCandidateRanker.php` (candidate ranking), `MandatoryCoverageChecker.php` (§12.3b), `LeaveConflictChecker.php` (§12.3c), `EmployeeFairnessScoreService.php` / `RoleRotationService.php` (§12.6), `ShiftAssignmentService.php` (manual create/update/move/delete), `ScheduleService.php` (§12.3d/§12.7's status machine), `ScheduleAcknowledgmentService.php` (§12.7). All scoped under `app/Modules/Scheduling`, `Lines`, `Staff`, `CompanySettings`.
 
 ### 27.1 Generate Suggestion - Step by Step
 
@@ -2211,7 +2368,7 @@ The rule-based engine it replaced (§12.6) decided one slot at a time and could 
 
 ### 28.1 Scope
 
-For an N-week horizon (12 by default) it decides who works which open shift. For shift leads that yields, per lead per week, one shift type and the exact days; for operators, also the station each shift. Generate uses it for the week being generated (§28.9). When the service isn't usable, generate refuses with the reason instead of staffing anyone another way.
+For an N-week horizon (`planner_horizon_weeks`, 8 by default, §28.10) it decides who works which open shift. For shift leads that yields, per lead per week, one shift type and the exact days; for operators, also the station each shift. Generate uses it for the week being generated (§28.9). When the service isn't usable, generate refuses with the reason instead of staffing anyone another way.
 
 ### 28.2 Priority Order (user-approved)
 
@@ -2220,8 +2377,9 @@ For an N-week horizon (12 by default) it decides who works which open shift. For
 | 1 | Personal limits (recurring unavailability such as day-only or never-Monday, approved leave), roles (a station only goes to its qualified, non-excluded operators; a lead shift only to leads), max weekly hours (no overtime), minimum rest between shifts (11h, §27.3), max shifts per day (so one station per person per shift) | Hard - never relaxed |
 | 2 | Every shift gets its minimum staffing (one lead) | Penalty |
 | 3 | One shift type per person per week; when someone has to mix types, the mixed weeks are shared out evenly | Penalty (the share is a tie-break right after the total, so it never adds a mixed week) |
-| 4 | Contract hours filled, and no shift above its maximum (two leads); whatever contract time can't be filled is shared out evenly | Penalty, summed in minutes; on a tie the maximum wins (a lead short on lead hours can still get station work from the normal generator), then the shortfall is shared |
-| 5 | Rotation direction (day -> afternoon -> night -> day), fairness (nights, Sundays, Saturdays, rotation breaks), weekend policy (§28.4); in cost mode labour cost comes right after rotation, before fairness (§28.10) | Penalty |
+| 4 | Contract hours filled, and no shift above its maximum (two leads); whatever contract time can't be filled is shared out evenly | Penalty, summed in minutes; on a tie the maximum wins (rather short hours than an over-full shift), then the shortfall is shared |
+| 5 | Rotation direction (day -> afternoon -> night -> day) | Penalty |
+| 6 | Preferred stations (§11a.3): an operator stays on a preferred station, or else on a preferred station's line - another station of that line costs 1 per shift, another line 3, so people move within their line before anyone changes line. Then spare leads on the shifts with an open station (§28.9). Then fairness (nights, Sundays, Saturdays, rotation breaks) and the weekend policy (§28.4); in cost mode labour cost comes right after the spare leads, before fairness (§28.10) | Penalty (preference added 2026-11-09, moved behind rotation 2026-11-11; spare leads added 2026-11-15) |
 
 Tiers are solved lexicographically: each stage is minimised (proven optimal, or best found within its time limit), then pinned, before the next one starts - a lower tier can never cost a higher one anything. Because only tier 1 is hard, the model is always feasible: there is always a plan, and the response lists every relaxed rule with its tier (an uncovered shift is reported, not a failure).
 
@@ -2273,15 +2431,15 @@ The `planner` Compose service (`roster/server.py`, image `docker/planner/Dockerf
 }
 ```
 
-`unavailable`/`absences` entries without a `type` block the whole day. A shift with a `role` only goes to people whose `roles` list contains it (e.g. `"role": "station:16"` on a station, `"roles": ["station:16", "station:18"]` on an operator); a shift without one goes to anyone. A shift's optional `paid_hours` (its hours with surcharges applied) and an employee's `hourly_cost` price it in cost mode (`rules.mode`: `fair` or `cost`). An employee's `group` (default empty) scopes fairness and the shares: people are only compared within their own group, and the group spreads are summed. Everything except `horizon_start`, `shift_types`, `shifts`, `employees` and each employee's `id`/`max_hours` is optional. `solver.stage_seconds` caps each stage, in solve order (defaults in seconds): `coverage` 10, `single_type` 10, `mixed_share` 10, `contract` 10, `over_max` 10, `short_share` 10, `rotation` 30, then `fairness` 60 and `weekend` 30 (swapped under `single_staffed`). A stage that proves its optimum stops early. With the defaults, today's six leads take about 90 seconds for 12 weeks, because the fairness and weekend stages run to their limits; the seventh-lead case takes about 140.
+`unavailable`/`absences` entries without a `type` block the whole day. A shift with a `role` only goes to people whose `roles` list contains it (e.g. `"role": "station:16"` on a station, `"roles": ["station:16", "station:18"]` on an operator); a shift without one goes to anyone. A shift's optional `spare_for` lists other shifts' ids: its people beyond its `min` stand by for theirs, and the `spare` stage puts them where those shifts are short (a second lead on the shift with an open station). A shift's optional `paid_hours` (its hours with surcharges applied) and an employee's `hourly_cost` price it in cost mode (`rules.mode`: `fair` or `cost`). An employee's `group` (default empty) scopes fairness and the shares: people are only compared within their own group, and the group spreads are summed. An employee's optional `preference_penalties` (`{"station:17": 1, "station:39": 3}`) is the penalty for each shift worked in a role; roles not listed cost nothing, and the `preference` stage minimises the total. Everything except `horizon_start`, `shift_types`, `shifts`, `employees` and each employee's `id`/`max_hours` is optional. `solver.stage_seconds` caps each stage, in solve order (defaults in seconds): `coverage` 10, `single_type` 10, `mixed_share` 10, `contract` 10, `over_max` 10, `short_share` 10, `rotation` 30, `preference` 10, `spare` 10, then `fairness` 60 and `weekend` 30 (swapped under `single_staffed`). A stage that proves its optimum stops early. With the defaults, today's six leads take about 90 seconds for 12 weeks, because the fairness and weekend stages run to their limits; the seventh-lead case takes about 140.
 
-The answer: `status` (`ok`, or `partial` when a stage found no solution in its time limit and the remaining tiers were left unoptimised), `summary` (`coverage_missing`, `extra_shift_types`, `hours_short`, `over_max_hours`, `rotation_breaks`, `weekend_extras`), `stages` (value, proven-optimal flag, seconds per stage), `relaxed` (one entry per relaxed rule: `coverage` tier 2, `single_type` tier 3, `contract_hours`/`max_per_shift` tier 4, `rotation` tier 5, each with the shift or the employee and week it concerns), `totals` (per person: hours and each fairness count) and `weeks` (per week, per person: shift types, hours and the shifts themselves). The report is rebuilt from the assignments alone and re-checks every tier-1 rule, so a modelling bug can't silently produce an illegal plan.
+The answer: `status` (`ok`, or `partial` when a stage found no solution in its time limit and the remaining tiers were left unoptimised), `summary` (`coverage_missing`, `extra_shift_types`, `hours_short`, `over_max_hours`, `preference_penalty`, `rotation_breaks`, `unbacked_gaps` (missing people on `spare_for` shifts with nobody spare standing by), `weekend_extras`), `stages` (value, proven-optimal flag, seconds per stage), `relaxed` (one entry per relaxed rule: `coverage` tier 2, `single_type` tier 3, `contract_hours`/`max_per_shift` tier 4, `rotation` tier 5, `preference` tier 6 (one per shift worked off preference, with its penalty), each with the shift or the employee and week it concerns), `totals` (per person: hours, each fairness count and, for anyone with preferences, `off_preference` shifts) and `weeks` (per week, per person: shift types, hours and the shifts themselves). The report is rebuilt from the assignments alone and re-checks every tier-1 rule, so a modelling bug can't silently produce an illegal plan.
 
 ### 28.6 Verified Scenarios
 
 The test suite (`planner/tests/test_leads.py`) runs the same solver over 12 weeks from week 45 (Sunday-Friday three shifts, Saturday night only: 19 lead shifts a week, 1-2 leads each, every lead 40h). Each tier value below is a lower bound worked out by hand, so reaching it means optimal. The solver also proves it on its own in every case except the seventh lead: that argument is a pigeonhole (seven leads, three types, two per type), which CP-SAT doesn't prove within its time limit. It finds the value within seconds, then spends the rest of the contract and shortfall-share stages' limits (10 seconds each by default) trying to prove it.
 
-Tier 5's fairness and weekend stages usually stop at their time limit with the best plan found, not a proven one. The parallel search also makes repeated runs differ slightly. For today's six leads, nights (25/20 - nights come in weeks of five, and twelve weeks don't split evenly over five leads), Sundays (8 each) and Saturdays (4 each) came out at their optimum in every run. Rotation breaks per lead differed by 1, and once by 2. CP-SAT's deterministic mode (`interleave_search`) was measured and rejected: it reproduces the same plan every time, but fairness got much worse (nights 30/20, rotation breaks 1-5). Repeatability belongs to the stability step in §28.8 instead.
+Tier 6's fairness and weekend stages usually stop at their time limit with the best plan found, not a proven one. The parallel search also makes repeated runs differ slightly. For today's six leads, nights (25/20 - nights come in weeks of five, and twelve weeks don't split evenly over five leads), Sundays (8 each) and Saturdays (4 each) came out at their optimum in every run. Rotation breaks per lead differed by 1, and once by 2. CP-SAT's deterministic mode (`interleave_search`) was measured and rejected: it reproduces the same plan every time, but fairness got much worse (nights 30/20, rotation breaks 1-5). Repeatability belongs to the stability step in §28.8 instead.
 
 | Team | Uncovered | Mixed weeks | Contract hours short | Rotation breaks | Why |
 |---|---|---|---|---|---|
@@ -2296,17 +2454,21 @@ Tier 5's fairness and weekend stages usually stop at their time limit with the b
 docker compose exec planner python -m pytest -q -p no:cacheprovider
 ```
 
-The suite runs in about 2.5 minutes; `tests/test_server.py` covers the HTTP layer and `tests/test_roles_groups.py` roles and groups. The Laravel suite runs on a separate PostgreSQL database, `personnelplanner_test` in the Compose `postgres` service, because three migrations use PostgreSQL-only SQL that SQLite can't run. To create it once: `docker compose exec postgres psql -U personnelplanner -c "CREATE DATABASE personnelplanner_test"`. Then run `docker compose exec backend php artisan test --compact`, about 11 seconds.
+The suite runs in about 2.5 minutes; `tests/test_server.py` covers the HTTP layer and `tests/test_roles_groups.py` roles, preferred roles (kept unless coverage or the rotation needs otherwise), groups, and spare people standing by on the shifts they back up. The Laravel suite runs on a separate PostgreSQL database, `personnelplanner_test` in the Compose `postgres` service, because three migrations use PostgreSQL-only SQL that SQLite can't run. To create it once: `docker compose exec postgres psql -U personnelplanner -c "CREATE DATABASE personnelplanner_test"`. Then run `docker compose exec backend php artisan test --compact`, about 15 seconds.
 
 Safeguards:
 - `tests/TestCase.php` refuses any database whose name doesn't end in `_test`, because feature tests wipe their database.
 - `phpunit.xml` blanks `PLANNER_URL` in both `$_ENV` and `$_SERVER`. Compose puts it in `$_SERVER`, which Laravel reads first, so blanking only `$_ENV` let tests call the real service.
 
 The tests:
-- **`tests/Feature/RosterPlannerTest.php`** (no database): the problem built from loaded models, settings and cost mode, reading the answer, and the HTTP fallbacks.
+- **`tests/Feature/RosterPlannerTest.php`** (no database): the problem built from loaded models, settings, cost mode and preference penalties, reading the answer, and the HTTP fallbacks.
+- **`tests/Feature/EmployeeQualifiedRolesTest.php`:** preferred stations are saved with the qualified roles, kept when left out, and only a qualified station can be one.
 - **`tests/Feature/GenerateScheduleTest.php`:** generate end to end on a small bakery built by `tests/Support/BuildsBakery.php` (2 lines with Line 2 two hours later, 3 stations, 6 leads, 8 operators plus a part-timer; 19 lead and 57 station shifts against 42 operator shifts):
   - the planner's answer placed exactly, using a simple valid stand-in answer;
-  - the real planner service, skipped when unreachable: all 19 lead shifts covered, exactly the 15 unavoidable station gaps, everyone at contract hours on one shift type;
+  - only the ticked stations and tasks planned, and a station or task left out on the shifts unticked for it (no shift, no placement, no gap);
+  - the real planner service, skipped when unreachable: all 19 lead shifts covered, exactly the 15 unavoidable station gaps, everyone at contract hours on one shift type, and an operator who prefers the Line 2 machine kept on it;
+  - the 11 second leads on shifts with an open station, all but one: the leads split 2/2/2, so 4 day, 4 afternoon and 3 night shifts have a second lead, and open stations under all of them would need at most 7 operators on those types where 8 work one type each;
+  - by hand (`tests/Feature/ManualAssignmentTest.php`), a second lead is offered for the open station on their shift and given it without a violation;
   - when the service is down, generate refuses and an existing draft keeps every assignment;
   - without a configured planner, no draft is created;
   - the generate endpoint queues a run that reports the regenerated schedule, or why the planner could not answer, or that the schedule is locked; an unknown run is a 404.
@@ -2326,15 +2488,16 @@ The tests:
 `ScheduleSuggestionService::generate()` plans shift leads and station operators in one solve. `PLANNER_URL` must be set: Compose sets `http://planner:8000` for the backend and queue containers, and `phpunit.xml` empties it.
 
 1. `openShiftLeadShifts()` lists every lead shift of the horizon: each day and slot type that at least one in-scope line runs (not closed, not excluded, has a pattern), with that line's hours. `openStationSlots()` lists every station that runs, with its own line's hours, `min_headcount` people, and one more on an `allows_second_person` station. Both repeat this week's lines, slot types and exclusions over the lookahead weeks.
-2. `RosterPlanner::planWeek()` loads the active shift leads (group `leads`, role `shift_lead`) and the active non-lead operators qualified for an in-scope station (group `operators`, one role `station:<id>` per qualified, non-excluded station), and builds the problem (`buildProblem()`, no database access):
+   - **Stations and tasks per shift (user decision, 2026-11-09):** under each line's day/shift grid in the generate form, "Stations & tasks" opens a grid per station and task of that line. The roles with no line (shift leading, company-wide tasks, flexible-hours roles with one row of days) are one more entry in the "Lines" box, "Line-independent", with its own day/shift grid and list, on by default so a new week never loses its leads. Roles are ticked wherever their line (or the line-independent grid) runs; ticking a line, or one of its cells, ticks them there again. A line-independent role's off cells are sent as exclusions too, since there's no line exclusion to cover them, and the form reads the line-independent grid back from them. Unticked cells go out as `role_slot_exclusions` (`[{role_id, day_of_week, slot_type}]`, a null `slot_type` for a flexible role's whole day), are kept in `generated_scope` and restored in the form, and repeat over the lookahead weeks like the line exclusions. On those shifts the role is left out everywhere: no slot for a station, no lead shift when every shift-lead role is out, no secondary task, no copied flexible role, and no gap in `MandatoryCoverageChecker`. `role_ids` (whole roles in scope, null for all) is applied the same way to leads and flexible roles, but the form doesn't send it.
+2. `RosterPlanner::planWeek()` loads the active shift leads (group `leads`, role `shift_lead`) and the active non-lead operators qualified for an in-scope station (group `operators`, one role `station:<id>` per qualified, non-excluded station, and `preference_penalties` from their preferred stations - 1 for another station of a preferred station's line, 3 for another line or a station with no line, none for someone without a preferred station), and builds the problem (`buildProblem()`, no database access):
    - contract minimum/maximum from `employment_terms`, with the configured default maximum when there's no contract;
    - recurring unavailability;
    - approved leave as absences;
    - last week's most-worked type as `previous_type`, from the latest schedule of the previous week, whatever its status;
    - last week's final two days as `previous_shifts`;
    - night/Sunday/Saturday counts and hours from the last 8 approved weeks as `history`;
-   - each lead shift needs one lead per shift-lead role, with at most `max_leads_per_shift` leads.
-3. `RosterPlannerClient` posts it, waiting up to `planner.timeout` (240 s). Generate runs on the queue (§28.11), not in the web request.
+   - each lead shift needs one lead per shift-lead role, with at most `max_leads_per_shift` leads, and is `spare_for` the stations of its date and slot type.
+3. `RosterPlannerClient` posts it, waiting up to `planner.timeout` (260 s). Generate runs on the queue (§28.11), not in the web request.
    - A missing URL, no connection, a timeout, an error status or an unusable answer is logged as a warning and thrown as `RosterPlannerUnavailableException`.
    - Generate asks before touching the draft, so nothing changes. The run fails with the reason, and the page shows it.
 4. Only the first week of the answer is kept (`RosterWeekPlanData`):
@@ -2345,7 +2508,9 @@ The tests:
 
 The planner never covers a station with spare capacity elsewhere - no lead on a station, no one holding two stations, no overtime (user decision: those stay manual). What no qualified operator can take stays unfilled for the planner to handle by hand.
 
-A generate call solves 8 weeks (`horizon_weeks`) within `planner.stage_seconds`, 190 seconds at most:
+**Spare leads stand by on the open stations' shifts (user decision, 2026-11-15).** Six 40-hour leads have 30 shifts for 19 lead shifts, so 11 a week are second leads. They used to land on any shift of the lead's type, whether or not a station was open there, so a station could stand open on one shift while another had two leads. Each lead shift is now `spare_for` its date and slot type's stations, and the `spare` stage (right after preference) puts the second leads on the shifts where a station is open. Generate still never puts a lead on a station: the planner gives the open station to the second lead by hand (alternative candidates or a manual assignment), which adds no hours because the two overlap. The leads only lead, so the stage can only move where the second leads stand and which shifts the operators leave open. With single shift types the operators can't always leave an open station under every spare lead. In the test bakery one of 11 has none (§28.7).
+
+A generate call solves 8 weeks (`horizon_weeks`) within `planner.stage_seconds`, 210 seconds at most (240 in cost mode):
 - **Time:** for today's 6 leads and 13 operators (760 shifts over 8 weeks), coverage, hours and single types prove within seconds; rotation, fairness and weekends use their full limits. The solve takes about 128 seconds and the whole generate about 130 (measured end to end through nginx), where the removed rule-based path took about 5. The page says it can take two to three minutes while it runs.
 - **Budget:** `single_type` gets 20 seconds, double the service default, because everything after it builds on it - cut to 3 seconds it stopped at dozens of mixed weeks where none are needed; it proves 0 in about 7.
 - **Shorter budget:** an earlier 45-second budget, sized for nginx's old 60-second limit, gave the same coverage, hours and mixed weeks with about 30% more rotation breaks (24 vs 30-34 over the 8 weeks).
@@ -2385,8 +2550,8 @@ Verified on isolated weeks of the development database:
 **Technical settings** stay in `config/planner.php`: the URL, timeout, stage limits, history weeks, rotation order and weekend weekdays.
 
 **Cost mode:** the generate form's Fair / Cost-based choice reaches the solver as `rules.mode`.
-- **Fair:** rotation, then fairness and the weekend policy.
-- **Cost-based:** rotation, then **labour cost**, then fairness and the weekend policy as tie-breaks. Rotation stays above cost because it's an explicit user rule.
+- **Fair:** rotation, preferred stations, spare leads, then fairness and the weekend policy.
+- **Cost-based:** rotation, preferred stations, spare leads, then **labour cost**, then fairness and the weekend policy as tie-breaks. Rotation stays above cost because it's an explicit user rule.
 - **How cost is measured:** each person's `effectiveHourlyRate()` times each shift's paid hours. Paid hours come from `PayRateSurchargeRuleService::computeShiftCost()` with rate 1, the same calculation cost ranking and reports use, and are only sent in cost mode when a surcharge rule is active.
 - **When it matters:** contract hours already fix how much everyone works, so cost only changes who takes surcharged shifts and how much anyone without a minimum (e.g. agency staff) is used. With today's data (no surcharge rules, everyone `vast`) both modes give the same coverage and hours.
 - **Verified:** a one-week cost-mode plan with week 45's scope solved in 4.7 seconds.
@@ -2398,9 +2563,22 @@ A generate takes about 130 seconds, longer than Cloudflare keeps a proxied reque
 1. `POST /schedules/suggest` validates the form, records a run in `ScheduleSuggestionRuns` (the cache, one hour) as `queued`, dispatches `App\Jobs\GenerateScheduleSuggestion` and answers 202 with the run.
 2. The job marks the run `running`, calls `generate()`, then marks it `completed` with the schedule id, or `failed` with the reason when the planner can't answer (`RosterPlannerUnavailableException`) or the draft may not be regenerated (`ScheduleNotRegenerableException`). Anything else fails the job, and `failed()` marks the run with a generic message.
    - `$tries = 1`: a failed run is reported, never silently retried.
-   - `$timeout = 300`: the planner's 240 seconds plus building the problem and placing the answer. The Redis queue's `retry_after` (`REDIS_QUEUE_RETRY_AFTER`) must stay above it.
+   - `$timeout = 300`: the planner's 260 seconds plus building the problem and placing the answer. The Redis queue's `retry_after` (`REDIS_QUEUE_RETRY_AFTER`) must stay above it.
 3. `GET /schedules/suggest/{run}` returns the run; once completed it carries the schedule, rendered like `GET /schedules/{id}`.
 4. The schedule page polls every 3 seconds while the run is queued or running, then shows the schedule or the reason.
 
 **Operating note:** the queue worker loads code at startup like the planner - after changing generate, run `docker compose restart queue`.
 
+---
+
+## 29. Production Deployment
+
+Production (`https://personnelplanner.sezginyurdakul.com`) runs on the development machine as its own Docker Compose project, `personnelplanner_prod` (`docker-compose.prod.yml`, containers `personnelplanner_*`): PostgreSQL, Redis, backend, queue worker, planner, and nginx serving the built frontend. Nothing is published on a host port. The Cloudflare Tunnel shared with other projects (`cf-tunnel`) joins the stack's network and forwards to nginx; its configuration lives outside this repository and is edited by the user.
+
+- **Settings:** `backend/.env.production`, copied from `backend/.env.production.example`. It is gitignored, with file mode 600. Mail goes out through Resend (`MAIL_PASSWORD` is its API key), and `MAIL_BLOCKED_DOMAINS` keeps demo addresses from being mailed (§20.2).
+- **Deploy:** `./scripts/deploy-prod.sh`.
+  - It refuses to start when SMTP is on with an empty mail key.
+  - It builds every image from the working tree, committed or not, starts the stack and waits for a healthy backend.
+  - It runs the migrations and connects `cf-tunnel` to `personnelplanner_prod_network`.
+- **Planner:** the planner image contains its code, so the same script deploys planner changes. Backend and planner always go out together: the backend sends the planner's stage limits, and a planner without a stage it is sent rejects the problem.
+- **After a deploy:** browsers keep showing the old app until every tab and the installed app are closed, or after a hard reload (§21.2).
