@@ -17,7 +17,7 @@ return [
      * this above the stage limits' total below and under GenerateScheduleSuggestion's 300 s
      * timeout.
      */
-    'timeout' => (int) env('PLANNER_TIMEOUT', 240),
+    'timeout' => (int) env('PLANNER_TIMEOUT', 260),
 
     /*
      * Approved weeks counted as history, so fairness carries across generate calls.
@@ -37,7 +37,7 @@ return [
 
     /*
      * Per-stage solver limits for a generate call (leads and operators solved together,
-     * 8 weeks), 190 seconds at most - 220 in cost mode, which adds the cost stage. A stage
+     * 8 weeks), 210 seconds at most - 240 in cost mode, which adds the cost stage. A stage
      * that proves its optimum stops early, so today's 6 leads and 13 operators take about
      * 130: coverage, hours and single types prove within seconds, rotation, fairness and
      * weekends use their full time. single_type gets double the service default because
@@ -53,6 +53,8 @@ return [
         'over_max' => 10,
         'short_share' => 10,
         'rotation' => 30,
+        'preference' => 10,
+        'spare' => 10,
         'fairness' => 60,
         'weekend' => 30,
         'cost' => 30,

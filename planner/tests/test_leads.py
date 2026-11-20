@@ -30,6 +30,7 @@ def check(report, unproven=()):
     assert stages['contract']['value'] == round((summary['hours_short'] + summary['over_max_hours']) * 60)
     assert stages['over_max']['value'] == round(summary['over_max_hours'] * 60)
     assert stages['short_share']['value'] == round(spread(per_lead(report, 'hours_short')) * 60)
+    assert stages['preference']['value'] == summary['preference_penalty'] == 0
     assert stages['rotation']['value'] == summary['rotation_breaks']
     assert summary['weekend_extras'] <= stages['weekend']['value']
     return summary

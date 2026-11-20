@@ -25,12 +25,22 @@ use Illuminate\Support\Facades\Log;
  * horizon starting at the week being generated, and keeps that first week. Leads and
  * operators are solved together but compared for fairness only within their own group, and
  * nobody covers for anybody: a station no qualified operator can take stays open for the
- * planner to fill by hand. Throws RosterPlannerUnavailableException when the service can't
- * answer - generate then refuses rather than staffing anyone some other way.
+ * planner to fill by hand - a spare lead is put on that shift as its second lead, so the
+ * station can be handed to them. Throws RosterPlannerUnavailableException when the service
+ * can't answer - generate then refuses rather than staffing anyone some other way.
  */
 final class RosterPlanner
 {
     public const LEAD_ROLE = 'shift_lead';
+
+    /**
+     * Preference penalties per shift (ProjectPlan.md §28.2 tier 6). Another line costs three
+     * times another station of the preferred line, so the planner moves people within their
+     * line before it moves anyone to another line.
+     */
+    private const OTHER_STATION_PENALTY = 1;
+
+    private const OTHER_LINE_PENALTY = 3;
 
     /**
      * What each fairness count counts; how much each matters is a company setting.
@@ -140,7 +150,9 @@ final class RosterPlanner
      * The planner's problem JSON (ProjectPlan.md §28.5), from already-loaded data only. Lead
      * shifts carry the role "shift_lead", stations "station:<role id>"; each person holds the
      * roles they may work - every lead the lead role, every operator the stations they're
-     * qualified for and not excluded from.
+     * qualified for and not excluded from, with a penalty on those off their preference. Each
+     * lead shift backs up ("spare_for") the stations of its date and slot type: a lead beyond
+     * its minimum is put where one of those is short.
      *
      * @param  array<int, string>  $slotTypes
      * @param  Collection<int, array{date: string, slot_type: string, start: Carbon, end: Carbon}>  $leadShifts
@@ -173,11 +185,12 @@ final class RosterPlanner
         $defaultMaxWeeklyHours = (float) config('scheduling_rules.default_max_weekly_hours', 40);
         $stationRoleIds = $stationSlots->pluck('role_id')->unique();
 
-        $person = fn (Employee $employee, string $group, array $roles) => [
+        $person = fn (Employee $employee, string $group, array $roles, array $preferencePenalties = []) => [
             'id' => $employee->id,
             'name' => trim("{$employee->first_name} {$employee->last_name}"),
             'group' => $group,
             'roles' => $roles,
+            'preference_penalties' => $preferencePenalties,
             'min_hours' => (float) ($employee->currentEmploymentTerm?->min_weekly_hours ?? 0),
             'max_hours' => (float) ($employee->currentEmploymentTerm?->max_weekly_hours ?? $defaultMaxWeeklyHours),
             'hourly_cost' => round($employee->effectiveHourlyRate(), 2),
@@ -196,6 +209,9 @@ final class RosterPlanner
             // An object, not a list, even when empty: the planner reads counts by key.
             'history' => $history->get($employee->id, ['hours' => 0, 'counts' => (object) []]),
         ];
+
+        $stationId = fn (array $slot) => "station|{$slot['date']}|{$slot['slot_type']}|{$slot['line_id']}|{$slot['role_id']}";
+        $stationIdsBySlot = $stationSlots->groupBy(fn (array $slot) => "{$slot['date']}|{$slot['slot_type']}")->map(fn (Collection $slots) => $slots->map($stationId)->values());
 
         $shift = fn (string $id, array $slot, ?string $role, int $min, int $max) => [
             'id' => $id,
@@ -226,15 +242,18 @@ final class RosterPlanner
                 'rotation_break_weight' => $settings->planner_rotation_break_weight,
             ],
             'shifts' => $leadShifts
-                ->map(fn (array $slot) => $shift(
-                    "lead|{$slot['date']}|{$slot['slot_type']}",
-                    $slot,
-                    self::LEAD_ROLE,
-                    $leadsPerShift,
-                    max($leadsPerShift, $settings->planner_max_leads_per_shift),
-                ))
+                ->map(fn (array $slot) => [
+                    ...$shift(
+                        "lead|{$slot['date']}|{$slot['slot_type']}",
+                        $slot,
+                        self::LEAD_ROLE,
+                        $leadsPerShift,
+                        max($leadsPerShift, $settings->planner_max_leads_per_shift),
+                    ),
+                    'spare_for' => $stationIdsBySlot->get("{$slot['date']}|{$slot['slot_type']}", collect())->all(),
+                ])
                 ->concat($stationSlots->map(fn (array $slot) => $shift(
-                    "station|{$slot['date']}|{$slot['slot_type']}|{$slot['line_id']}|{$slot['role_id']}",
+                    $stationId($slot),
                     $slot,
                     "station:{$slot['role_id']}",
                     $slot['min'],
@@ -243,18 +262,54 @@ final class RosterPlanner
                 ->values()->all(),
             'employees' => $leads
                 ->map(fn (Employee $lead) => $person($lead, 'leads', [self::LEAD_ROLE]))
-                ->concat($operators->map(fn (Employee $operator) => $person(
-                    $operator,
-                    'operators',
-                    $operator->schedulingRoles
+                ->concat($operators->map(function (Employee $operator) use ($person, $stationRoleIds) {
+                    $roleIds = $operator->schedulingRoles
                         ->pluck('id')
                         ->filter(fn (int $roleId) => $stationRoleIds->contains($roleId) && ! $operator->isExcludedFromRole($roleId))
-                        ->map(fn (int $roleId) => "station:{$roleId}")
-                        ->values()->all(),
-                )))
+                        ->values();
+
+                    return $person(
+                        $operator,
+                        'operators',
+                        $roleIds->map(fn (int $roleId) => "station:{$roleId}")->all(),
+                        $this->preferencePenalties($operator, $roleIds),
+                    );
+                }))
                 ->values()->all(),
             'solver' => ['stage_seconds' => config('planner.stage_seconds')],
         ];
+    }
+
+    /**
+     * What each shift on a station costs this operator in the planner's preference stage
+     * (ProjectPlan.md §28.2 tier 6): nothing on a preferred station, OTHER_STATION_PENALTY
+     * on another station of a preferred station's line, OTHER_LINE_PENALTY anywhere else.
+     * Someone with no preferred station has none.
+     *
+     * @param  Collection<int, int>  $roleIds  the stations they may work
+     * @return array<string, int> "station:<id>" => penalty, preferred stations left out
+     */
+    private function preferencePenalties(Employee $operator, Collection $roleIds): array
+    {
+        $preferredRoleIds = $operator->preferredRoleIds();
+
+        if ($preferredRoleIds->isEmpty()) {
+            return [];
+        }
+
+        $lineIdsByRoleId = $operator->schedulingRoles->pluck('line_id', 'id');
+        $preferredLineIds = $preferredRoleIds->map(fn (int $roleId) => $lineIdsByRoleId->get($roleId))->filter()->values();
+
+        return $roleIds
+            ->reject(fn (int $roleId) => $preferredRoleIds->containsStrict($roleId))
+            ->mapWithKeys(function (int $roleId) use ($lineIdsByRoleId, $preferredLineIds) {
+                $lineId = $lineIdsByRoleId->get($roleId);
+
+                return ["station:{$roleId}" => $lineId !== null && $preferredLineIds->containsStrict($lineId)
+                    ? self::OTHER_STATION_PENALTY
+                    : self::OTHER_LINE_PENALTY];
+            })
+            ->all();
     }
 
     /**

@@ -62,17 +62,86 @@ class GenerateScheduleTest extends TestCase
         $this->assertValidSchedule($schedule);
     }
 
+    public function test_plans_only_the_ticked_stations_and_tasks(): void
+    {
+        config(['planner.url' => 'http://planner.test']);
+        $problem = null;
+        $answer = null;
+        Http::fake(['planner.test/plan' => function (Request $request) use (&$problem, &$answer) {
+            $problem = $request->data();
+            $answer = $this->simplePlan($problem);
+
+            return Http::response($answer);
+        }]);
+        [$dough, $oven, $silo] = [$this->roles['dough']->id, $this->roles['oven']->id, $this->roles['silo']->id];
+
+        // Line 2's machine and the shift lead role left unticked.
+        $schedule = $this->generateWeek(self::WEEK, roleIds: [$dough, $oven, $silo]);
+
+        $this->assertEqualsCanonicalizing(["station:{$dough}", "station:{$oven}"], collect($problem['shifts'])->pluck('role')->unique()->values()->all(), 'no lead or machine shifts');
+        $this->assertNotContains($this->people['Karlos']->id, collect($problem['employees'])->pluck('id')->all(), 'only qualified for the machine');
+        $placedRoles = ShiftAssignment::query()->where('schedule_id', $schedule->id)->pluck('role_id')->unique()->all();
+        $this->assertEmpty(array_intersect([$this->roles['lead']->id, $this->roles['machine']->id], $placedRoles), 'nothing placed on them');
+        $this->assertContains($silo, $placedRoles, 'a ticked task still rides the shifts');
+
+        $planned = collect($answer['weeks'][0]['employees'])->sum(fn (array $row) => count($row['shifts']));
+        $this->assertSame(38 - $planned, $this->blockingGaps($schedule), 'only Line 1 station shifts can be open, never the unticked roles');
+        $this->assertSame([$dough, $oven, $silo], $schedule->fresh()->generated_scope['role_ids']);
+        $this->assertValidSchedule($schedule);
+    }
+
+    public function test_leaves_a_station_or_task_out_on_the_shifts_unticked_for_it(): void
+    {
+        config(['planner.url' => 'http://planner.test']);
+        $problem = null;
+        Http::fake(['planner.test/plan' => function (Request $request) use (&$problem) {
+            $problem = $request->data();
+
+            return Http::response($this->simplePlan($problem));
+        }]);
+        [$l1, $l2] = [$this->lines['l1']->id, $this->lines['l2']->id];
+        [$dough, $oven, $machine, $lead, $silo] = collect(['dough', 'oven', 'machine', 'lead', 'silo'])->map(fn (string $key) => $this->roles[$key]->id)->all();
+
+        // The oven off on Sunday day and afternoon, the machine all Monday, no lead on
+        // Tuesday night and no silo watch on Sunday night.
+        $exclusions = [
+            ['role_id' => $oven, 'day_of_week' => 7, 'slot_type' => 'day'],
+            ['role_id' => $oven, 'day_of_week' => 7, 'slot_type' => 'afternoon'],
+            ['role_id' => $machine, 'day_of_week' => 1, 'slot_type' => null],
+            ['role_id' => $lead, 'day_of_week' => 2, 'slot_type' => 'night'],
+            ['role_id' => $silo, 'day_of_week' => 7, 'slot_type' => 'night'],
+        ];
+        $schedule = $this->generateWeek(self::WEEK, roleSlotExclusions: $exclusions);
+
+        $shiftIds = collect($problem['shifts'])->pluck('id')->all();
+        $this->assertEmpty(array_intersect([
+            "station|2027-01-03|day|{$l1}|{$oven}",
+            "station|2027-01-03|afternoon|{$l1}|{$oven}",
+            "station|2027-01-04|day|{$l2}|{$machine}",
+            "station|2027-01-04|night|{$l2}|{$machine}",
+            'lead|2027-01-05|night',
+            'lead|2027-01-12|night',
+        ], $shiftIds), 'no shift for what was left out, in the lookahead weeks too');
+        $this->assertContains("station|2027-01-03|day|{$l1}|{$dough}", $shiftIds, 'the rest of the line still runs');
+        $this->assertContains('lead|2027-01-05|day', $shiftIds);
+
+        $left = ["{$oven}|2027-01-03|day", "{$oven}|2027-01-03|afternoon", "{$machine}|2027-01-04|day", "{$machine}|2027-01-04|night", "{$lead}|2027-01-05|night", "{$silo}|2027-01-03|night"];
+        $placed = ShiftAssignment::query()->where('schedule_id', $schedule->id)->with('shiftPattern')->get()
+            ->map(fn (ShiftAssignment $a) => "{$a->role_id}|{$a->work_date->format('Y-m-d')}|{$a->shiftPattern->slot_type}");
+        $this->assertEmpty(array_intersect($left, $placed->all()), 'nothing placed on them');
+        $this->assertTrue($placed->contains(fn (string $key) => str_starts_with($key, "{$silo}|")), 'silo watch still rides other shifts');
+
+        $gaps = app(MandatoryCoverageChecker::class)->unresolvedBlockingSlots($schedule)
+            ->map(fn ($slot) => "{$slot->role->id}|{$slot->workDate->format('Y-m-d')}|{$slot->shiftPattern->slot_type}");
+        $this->assertEmpty(array_intersect($left, $gaps->all()), 'and none of them shows as a gap');
+        $this->assertSame($exclusions, $schedule->fresh()->generated_scope['role_slot_exclusions']);
+        $this->assertValidSchedule($schedule);
+    }
+
     public function test_plans_with_the_real_planner_service(): void
     {
-        config(['planner.url' => 'http://planner:8000', 'planner.stage_seconds' => array_fill_keys(array_keys(config('planner.stage_seconds')), 3)]);
-
-        try {
-            Http::timeout(2)->get('http://planner:8000/health')->throw();
-        } catch (\Throwable) {
-            $this->markTestSkipped('The planner service is not reachable from here.');
-        }
-
-        CompanySetting::current()->update(['planner_horizon_weeks' => 1]);
+        $this->useRealPlanner();
+        $this->people['Sezgin']->schedulingRoles()->updateExistingPivot($this->roles['machine']->id, ['is_preferred' => true]);
         $schedule = $this->generateWeek(self::WEEK);
         $assignments = ShiftAssignment::query()->where('schedule_id', $schedule->id)->with(['role', 'shiftPattern'])->get();
 
@@ -87,6 +156,20 @@ class GenerateScheduleTest extends TestCase
             $this->assertCount(1, $own->pluck('shiftPattern.slot_type')->unique(), "{$name} works one shift type");
         }
         $this->assertFalse($assignments->where('employee_id', $this->people['Sander']->id)->contains(fn ($a) => $a->work_date->isMonday()), 'Sander never on a Monday');
+        $sezginStations = $assignments->where('employee_id', $this->people['Sezgin']->id)->filter(fn ($a) => $a->role->isStation());
+        $this->assertSame([$this->roles['machine']->id], $sezginStations->pluck('role_id')->unique()->values()->all(), 'Sezgin stays on the station he prefers');
+
+        // 6 x 5 lead shifts for 19 leaves 11 second leads, standing on shifts with an open
+        // station so it can be given to them by hand. The leads split 2/2/2, so 4 day, 4
+        // afternoon and 3 night shifts have one; open stations under all of them would need
+        // at most 2 day, 2 afternoon and 3 night operators - 7 of the 8, who all work one type
+        // at 40 hours. So one second lead has no open station on their shift.
+        $secondLeads = $assignments->filter(fn (ShiftAssignment $a) => $a->role_id === $this->roles['lead']->id)
+            ->countBy(fn (ShiftAssignment $a) => $a->work_date->format('Y-m-d').$a->shiftPattern->slot_type)
+            ->filter(fn (int $leads) => $leads === 2)->keys();
+        $openShifts = app(MandatoryCoverageChecker::class)->unresolvedBlockingSlots($schedule)->map(fn ($slot) => $slot->workDate->format('Y-m-d').$slot->shiftPattern->slot_type)->unique();
+        $this->assertCount(11, $secondLeads);
+        $this->assertCount(1, $secondLeads->diff($openShifts), 'every other second lead on a shift with an open station');
     }
 
     public function test_refuses_when_the_planner_is_down_and_leaves_the_draft_alone(): void
@@ -156,6 +239,41 @@ class GenerateScheduleTest extends TestCase
     public function test_unknown_generate_run_is_not_found(): void
     {
         $this->actingAs($this->admin())->getJson('/api/v1/schedules/suggest/'.Str::uuid())->assertNotFound();
+    }
+
+    public function test_a_lead_alone_on_a_shift_still_takes_its_tasks(): void
+    {
+        config(['planner.url' => 'http://planner.test']);
+        Http::fake(['planner.test/plan' => fn (Request $request) => Http::response($this->simplePlan($request->data()))]);
+        [$dough, $oven, $machine, $lead, $silo] = collect(['dough', 'oven', 'machine', 'lead', 'silo'])->map(fn (string $key) => $this->roles[$key]->id)->all();
+
+        // Every station off on Monday day - only the lead works that shift.
+        $schedule = $this->generateWeek(self::WEEK, roleSlotExclusions: collect([$dough, $oven, $machine])
+            ->map(fn (int $roleId) => ['role_id' => $roleId, 'day_of_week' => 1, 'slot_type' => 'day'])->all());
+
+        $mondayDay = ShiftAssignment::query()->where('schedule_id', $schedule->id)->whereDate('work_date', '2027-01-04')
+            ->whereHas('shiftPattern', fn ($q) => $q->where('slot_type', 'day'))->get();
+        $leadId = $mondayDay->firstWhere('role_id', $lead)?->employee_id;
+        $this->assertNotNull($leadId, 'the lead is planned');
+        $this->assertSame($leadId, $mondayDay->firstWhere('role_id', $silo)?->employee_id, 'silo watch rides the lead');
+        $this->assertValidSchedule($schedule);
+    }
+
+    /**
+     * Generate through the planner service itself, on a one-week horizon with short stages;
+     * the test is skipped where the service isn't reachable.
+     */
+    private function useRealPlanner(): void
+    {
+        config(['planner.url' => 'http://planner:8000', 'planner.stage_seconds' => array_fill_keys(array_keys(config('planner.stage_seconds')), 3)]);
+
+        try {
+            Http::timeout(2)->get('http://planner:8000/health')->throw();
+        } catch (\Throwable) {
+            $this->markTestSkipped('The planner service is not reachable from here.');
+        }
+
+        CompanySetting::current()->update(['planner_horizon_weeks' => 1]);
     }
 
     /**

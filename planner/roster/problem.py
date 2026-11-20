@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 
 WEEKEND_POLICIES = ('fair', 'single_staffed')
@@ -24,6 +24,8 @@ DEFAULT_STAGE_SECONDS = {
     'over_max': 10,
     'short_share': 10,
     'rotation': 30,
+    'preference': 10,
+    'spare': 10,
     'fairness': 60,
     'weekend': 30,
     'cost': 30,
@@ -52,6 +54,7 @@ class Shift:
     min: int
     max: int | None
     role: str | None  # only people holding this role can work it; None = anyone
+    spare_for: tuple[int, ...] = ()  # shifts whose missing people this shift's people beyond its min stand by for
 
 
 @dataclass(frozen=True)
@@ -84,6 +87,7 @@ class Employee:
     history_counts: dict[str, int]
     group: str  # fairness and shares compare people within one group only
     cost_cents: int  # hourly cost in cents (cost mode)
+    preference_penalties: dict[str, int]  # role -> penalty per shift worked in it; unlisted roles cost nothing
     fair_coef: int = 0  # makes fairness counts proportional to contract hours; 0 = not compared
 
 
@@ -97,7 +101,7 @@ class Problem:
     rest_conflicts: list[tuple[int, int]]  # shift index pairs one person can't both work
     max_shifts_per_day: int
     weekend_policy: str
-    mode: str  # fair: fairness after rotation; cost: labour cost after rotation, then fairness
+    mode: str  # fair: fairness after preference; cost: labour cost after preference, then fairness
     weekend_weekdays: frozenset[int]
     dimensions: list[Dimension]
     rotation_break_weight: int
@@ -140,6 +144,13 @@ def parse(data: dict) -> Problem:
     ]
     if len({s.id for s in shifts}) != len(shifts):
         raise ProblemError('shift ids must be unique')
+    index_by_id = {s.id: s.index for s in shifts}
+    for i, raw in enumerate(data['shifts']):
+        ids = raw.get('spare_for') or []
+        if not isinstance(ids, list) or any(not isinstance(t, (str, int)) or index_by_id.get(t, i) == i for t in ids):
+            raise ProblemError(f'shifts[{i}].spare_for must list the ids of other shifts')
+        if ids:
+            shifts[i] = replace(shifts[i], spare_for=tuple(sorted({index_by_id[t] for t in ids})))
 
     employees, shares = [], []
     for i, raw in enumerate(_required(data, 'employees', 'problem')):
@@ -272,6 +283,10 @@ def _employee(index, raw, path, shifts, weeks, horizon_start, types, rotation, m
     if previous_type is not None and previous_type not in types:
         raise ProblemError(f'{path}.previous_type {previous_type!r} is not in shift_types')
 
+    penalties = raw.get('preference_penalties') or {}
+    if not isinstance(penalties, dict):
+        raise ProblemError(f'{path}.preference_penalties must be an object of role keys')
+
     history = raw.get('history') or {}
     # Fairness shares are proportional to contract hours (minimum hours, or maximum hours when
     # there is no minimum), past ones included, so part-timers get a proportional share.
@@ -292,6 +307,9 @@ def _employee(index, raw, path, shifts, weeks, horizon_start, types, rotation, m
         history_counts={k: _int(v, f'{path}.history.counts.{k}', minimum=0) for k, v in (history.get('counts') or {}).items()},
         group=str(raw.get('group', '')),
         cost_cents=round(100 * _number(raw.get('hourly_cost', 0), f'{path}.hourly_cost')),
+        preference_penalties={
+            str(role): _int(penalty, f'{path}.preference_penalties.{role}', minimum=0) for role, penalty in penalties.items()
+        },
     )
     return employee, share
 

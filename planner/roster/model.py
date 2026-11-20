@@ -16,10 +16,15 @@ exactly which rules had to give.
           over_max     tie-break inside tier 4: rather short hours than an over-full shift
           short_share  next tie-break: whatever contract time can't be filled is shared out evenly
   tier 5  rotation     next week's type follows the rotation cycle
+  tier 6  preference   people stay on the roles they prefer: each shift worked elsewhere costs
+                       that person's penalty for its role (from the input)
+          spare        people beyond a shift's minimum are put where the shifts it backs up
+                       (spare_for) are short, e.g. a second lead on the shift with an open
+                       station, to be given it by hand; counts the missing people nobody backs
           fairness     even nights / Sundays / Saturdays / rotation breaks (weights from the input)
           weekend      weekend shifts at their minimum staffing; runs before fairness when the
                        weekend policy is single_staffed
-          cost         mode cost only, right after rotation: hourly cost x paid hours (surcharges
+          cost         mode cost only, right after preference: hourly cost x paid hours (surcharges
                        included); fairness and weekend still follow as tie-breaks
 
 Shares and fairness compare people within their own group (e.g. leads with leads, operators
@@ -95,12 +100,14 @@ class RosterModel:
                     m.add_bool_or([first.Not(), second.Not()])
 
         missing, over_minutes, weekend_extra = [], [], []
+        short_by_shift = {}
         for s in p.shifts:
             on = staff[s.index]
             if s.min > 0:
                 short = self._int(s.min, f'short_{s.index}')
                 m.add(sum(on) + short >= s.min)
                 missing.append(short)
+                short_by_shift[s.index] = short
             if s.max is not None and len(on) > s.max:
                 excess = self._int(len(on) - s.max, f'over_{s.index}')
                 m.add(excess >= sum(on) - s.max)
@@ -155,11 +162,19 @@ class RosterModel:
                 values = [sum(short_by_employee[e.index]) for e in contracted]
                 short_share.append(self._spread(f'short_minutes_{group}', values, max(sum(e.target_minutes) for e in contracted)))
 
+        unbacked = self._unbacked_gaps(staff, short_by_shift)
+
+        preference = [
+            penalty * var
+            for (e, s), var in self.x.items()
+            if (penalty := p.employees[e].preference_penalties.get(p.shifts[s].role, 0))
+        ]
+
         breaks = self._rotation_breaks()
         fairness = self._fairness_terms(breaks)
-        tier5 = [('fairness', fairness), ('weekend', weekend_extra)]
+        tier6 = [('fairness', fairness), ('weekend', weekend_extra)]
         if p.weekend_policy == 'single_staffed':
-            tier5.reverse()
+            tier6.reverse()
         if p.mode == 'cost':
             # Labour cost in cents x paid minutes: who works the surcharged shifts, and how
             # much of anyone beyond what the higher tiers already fixed.
@@ -168,7 +183,7 @@ class RosterModel:
                 for (e, s), var in self.x.items()
                 if p.employees[e].cost_cents and p.shifts[s].paid_minutes
             ]
-            tier5.insert(0, ('cost', cost))
+            tier6.insert(0, ('cost', cost))
         self.stages = [
             ('coverage', missing),
             ('single_type', extra_types),
@@ -177,8 +192,36 @@ class RosterModel:
             ('over_max', over_minutes),
             ('short_share', short_share),
             ('rotation', [flag for flags in breaks.values() for flag in flags]),
-            *tier5,
+            ('preference', preference),
+            ('spare', unbacked),
+            *tier6,
         ]
+
+    def _unbacked_gaps(self, staff: dict, short_by_shift: dict) -> list:
+        """Per shift with spare_for: the missing people on those shifts minus its people beyond its minimum."""
+        p, m = self.problem, self.model
+        terms = []
+        for s in p.shifts:
+            gaps = [short_by_shift[t] for t in s.spare_for if t in short_by_shift]
+            if not gaps:
+                continue
+            on = staff[s.index]
+            upper = min(max(0, len(on) - s.min), sum(p.shifts[t].min for t in s.spare_for))
+            if upper == 0:
+                terms.append(sum(gaps))
+                continue
+            backed = self._int(upper, f'backed_{s.index}')
+            m.add(backed <= sum(gaps))
+            if s.min > 0:
+                # Only people beyond the minimum stand by; a shift below it backs nobody.
+                full = self._bool(f'full_{s.index}')
+                m.add(sum(on) >= s.min).only_enforce_if(full)
+                m.add(backed <= sum(on) - s.min).only_enforce_if(full)
+                m.add(backed == 0).only_enforce_if(full.Not())
+            else:
+                m.add(backed <= sum(on))
+            terms.append(sum(gaps) - backed)
+        return terms
 
     def _rotation_breaks(self) -> dict[int, list]:
         """One flag per person and week, set when the week's type doesn't follow last week's."""

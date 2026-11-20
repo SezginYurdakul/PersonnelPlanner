@@ -30,7 +30,7 @@ class GenerateScheduleSuggestion implements ShouldQueue
     public int $tries = 1;
 
     /**
-     * The planner's own limit (config('planner.timeout'), 240 s) plus building the problem
+     * The planner's own limit (config('planner.timeout'), 260 s) plus building the problem
      * and placing the answer. The queue's retry_after must stay above this.
      */
     public int $timeout = 300;

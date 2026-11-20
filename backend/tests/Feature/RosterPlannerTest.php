@@ -13,6 +13,7 @@ use App\Modules\Staff\Models\Employee;
 use App\Modules\Staff\Models\EmployeeRoleExclusion;
 use App\Modules\Staff\Models\EmployeeUnavailability;
 use App\Modules\Staff\Models\EmploymentTerm;
+use Illuminate\Database\Eloquent\Relations\Pivot;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -69,7 +70,7 @@ class RosterPlannerTest extends TestCase
         $this->assertSame([3, 3], array_column($problem['fairness']['dimensions'], 'weight'));
         $this->assertSame([3, 'fair'], [$problem['fairness']['rotation_break_weight'], $problem['rules']['weekend_policy']]);
         $this->assertSame([
-            ['id' => 'lead|2027-01-03|day', 'date' => '2027-01-03', 'type' => 'day', 'role' => 'shift_lead', 'start' => '2027-01-03T08:00', 'end' => '2027-01-03T16:00', 'min' => 1, 'max' => 2, 'paid_hours' => null],
+            ['id' => 'lead|2027-01-03|day', 'date' => '2027-01-03', 'type' => 'day', 'role' => 'shift_lead', 'start' => '2027-01-03T08:00', 'end' => '2027-01-03T16:00', 'min' => 1, 'max' => 2, 'paid_hours' => null, 'spare_for' => ['station|2027-01-03|day|1|18']],
             ['id' => 'station|2027-01-03|afternoon|6|16', 'date' => '2027-01-03', 'type' => 'afternoon', 'role' => 'station:16', 'start' => '2027-01-03T18:00', 'end' => '2027-01-04T02:00', 'min' => 1, 'max' => 2, 'paid_hours' => 9.5],
             ['id' => 'station|2027-01-03|day|1|18', 'date' => '2027-01-03', 'type' => 'day', 'role' => 'station:18', 'start' => '2027-01-03T08:00', 'end' => '2027-01-03T16:00', 'min' => 1, 'max' => 1, 'paid_hours' => null],
         ], $problem['shifts']);
@@ -120,6 +121,35 @@ class RosterPlannerTest extends TestCase
         $this->assertSame(['night' => 2, 'sunday' => 5, 'saturday' => 0], array_column($problem['fairness']['dimensions'], 'weight', 'key'));
         $this->assertSame(1, $problem['fairness']['rotation_break_weight']);
         $this->assertSame([1, 3], [$problem['shifts'][0]['min'], $problem['shifts'][0]['max']], 'up to three leads a shift');
+    }
+
+    public function test_operators_get_a_penalty_off_their_preferred_station_and_line(): void
+    {
+        $ali = $this->person(80, 'Ali');
+        $ali->setRelation('schedulingRoles', collect([$this->role(16, 1, preferred: true), $this->role(17, 1), $this->role(39, 6), $this->role(40)]));
+        $david = $this->person(67, 'David');
+        $david->setRelation('schedulingRoles', collect([$this->role(16, 1), $this->role(39, 6)]));
+        $slot = fn (int $lineId, int $roleId) => ['date' => '2027-01-03', 'slot_type' => 'day', 'line_id' => $lineId, 'role_id' => $roleId, 'start' => Carbon::parse('2027-01-03 08:00'), 'end' => Carbon::parse('2027-01-03 16:00'), 'min' => 1, 'max' => 1];
+
+        $problem = app(RosterPlanner::class)->buildProblem(
+            Carbon::parse('2027-01-03'),
+            1,
+            ['day'],
+            collect([['date' => '2027-01-03', 'slot_type' => 'day', 'start' => Carbon::parse('2027-01-03 08:00'), 'end' => Carbon::parse('2027-01-03 16:00')]]),
+            1,
+            collect([$slot(1, 16), $slot(1, 17), $slot(6, 39), $slot(0, 40)]),
+            collect([$this->person(7, 'Erdal')]),
+            collect([$ali, $david]),
+            collect(),
+            collect(),
+            collect(),
+            $this->settings(),
+        );
+
+        [$lead, $preferring, $indifferent] = $problem['employees'];
+        $this->assertSame(['station:17' => 1, 'station:39' => 3, 'station:40' => 3], $preferring['preference_penalties'], 'another station of the line, then another line or none');
+        $this->assertSame([], $indifferent['preference_penalties'], 'no preferred station, no penalty anywhere');
+        $this->assertSame([], $lead['preference_penalties']);
     }
 
     public function test_keeps_the_first_week_of_the_answer(): void
@@ -226,10 +256,11 @@ class RosterPlannerTest extends TestCase
         ]);
     }
 
-    private function role(int $id): SchedulingRole
+    private function role(int $id, ?int $lineId = null, bool $preferred = false): SchedulingRole
     {
-        $role = new SchedulingRole;
+        $role = new SchedulingRole(['line_id' => $lineId]);
         $role->id = $id;
+        $role->setRelation('pivot', new Pivot(['is_preferred' => $preferred]));
 
         return $role;
     }

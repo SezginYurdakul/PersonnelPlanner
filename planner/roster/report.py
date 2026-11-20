@@ -34,6 +34,21 @@ def build_report(problem: Problem, solution: Solution) -> dict:
             summary['over_max_minutes'] += (count - s.max) * s.minutes
         if s.weekday in p.weekend_weekdays:
             summary['weekend_extras'] += max(0, count - max(s.min, 1))
+        if s.spare_for:
+            gaps = sum(max(0, p.shifts[t].min - len(staff[t])) for t in s.spare_for)
+            summary['unbacked_gaps'] += max(0, gaps - max(0, count - s.min))
+
+    off_preference = defaultdict(int)  # employee index -> shifts worked off their preferred roles
+    for e, s in sorted(solution.assigned, key=lambda key: (key[0], p.shifts[key[1]].start)):
+        penalty = p.employees[e].preference_penalties.get(p.shifts[s].role, 0)
+        if penalty:
+            shift = p.shifts[s]
+            relaxed.append({
+                'rule': 'preference', 'tier': 6, 'employee_id': p.employees[e].id,
+                'shift_id': shift.id, 'date': shift.date.isoformat(), 'type': shift.type, 'penalty': penalty,
+            })
+            summary['preference_penalty'] += penalty
+            off_preference[e] += 1
 
     types_used = {}
     extra_types = defaultdict(int)  # employee index -> extra shift types over the horizon
@@ -100,6 +115,8 @@ def build_report(problem: Problem, solution: Solution) -> dict:
             row['extra_shift_types'] = extra_types[e.index]
         if e.next_type:
             row['rotation_breaks'] = breaks[e.index]
+        if e.preference_penalties:
+            row['off_preference'] = off_preference[e.index]
         totals.append(row)
 
     return {
@@ -109,7 +126,9 @@ def build_report(problem: Problem, solution: Solution) -> dict:
             'extra_shift_types': summary['extra_shift_types'],
             'hours_short': _hours(summary['hours_short_minutes']),
             'over_max_hours': _hours(summary['over_max_minutes']),
+            'preference_penalty': summary['preference_penalty'],
             'rotation_breaks': summary['rotation_breaks'],
+            'unbacked_gaps': summary['unbacked_gaps'],
             'weekend_extras': summary['weekend_extras'],
             'cost': round(sum(p.employees[e].cost_cents * p.shifts[s].paid_minutes for e, s in solution.assigned) / 6000, 2),
         },
