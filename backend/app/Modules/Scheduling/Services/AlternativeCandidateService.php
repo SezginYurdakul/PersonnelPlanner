@@ -9,6 +9,7 @@ use App\Modules\Scheduling\Contracts\AlternativeCandidateServiceContract;
 use App\Modules\Scheduling\DTOs\CandidateData;
 use App\Modules\Scheduling\Models\Schedule;
 use App\Modules\Scheduling\Models\ShiftAssignment;
+use App\Modules\Staff\Models\Employee;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
@@ -22,6 +23,7 @@ final class AlternativeCandidateService implements AlternativeCandidateServiceCo
     public function __construct(
         private readonly SlotCandidateRanker $ranker,
         private readonly EmployeeFairnessScoreService $fairnessScores,
+        private readonly EffectiveWorkedHoursCalculator $hoursCalculator,
     ) {}
 
     public function forSlot(
@@ -39,7 +41,13 @@ final class AlternativeCandidateService implements AlternativeCandidateServiceCo
 
         [$shiftStart, $shiftEnd] = $this->shiftTimeRange($workDate, $shiftPattern, $startsAt, $endsAt);
 
-        $fairScores = $this->currentWeekFairScores($schedule);
+        $assignmentsByEmployeeId = ShiftAssignment::query()
+            ->where('schedule_id', $schedule->id)
+            ->with('shiftPattern')
+            ->get()
+            ->groupBy('employee_id');
+
+        $fairScores = $this->currentWeekFairScores($assignmentsByEmployeeId);
 
         $ranked = $this->ranker->rankAllForRole($role, $shiftStart, $shiftEnd, $rankingMode, $fairScores, $shiftPattern?->slot_type);
 
@@ -55,9 +63,28 @@ final class AlternativeCandidateService implements AlternativeCandidateServiceCo
             ->where('role_id', $roleId)
             ->pluck('employee_id');
 
-        return $ranked->reject(
-            fn (CandidateData $candidate) => $alreadyAssignedEmployeeIds->contains($candidate->employee->id)
-        )->values();
+        return $ranked
+            ->reject(fn (CandidateData $candidate) => $alreadyAssignedEmployeeIds->contains($candidate->employee->id))
+            ->map(fn (CandidateData $candidate) => $candidate->withWeekLoad(
+                $this->hoursCalculator->totalHours($assignmentsByEmployeeId->get($candidate->employee->id, collect())),
+                $this->contractHours($candidate->employee),
+            ))
+            ->values();
+    }
+
+    /**
+     * The weekly hours their current employment term sets, as the week summary shows them.
+     *
+     * @return array{min: ?float, max: float}|null
+     */
+    private function contractHours(Employee $employee): ?array
+    {
+        $term = $employee->currentEmploymentTerm;
+
+        return $term === null ? null : [
+            'min' => $term->min_weekly_hours === null ? null : (float) $term->min_weekly_hours,
+            'max' => (float) $term->max_weekly_hours,
+        ];
     }
 
     /**
@@ -104,18 +131,15 @@ final class AlternativeCandidateService implements AlternativeCandidateServiceCo
      * what has actually been assigned so far this week, not just a single in-progress
      * generate() pass.
      *
+     * @param  Collection<int, Collection<int, ShiftAssignment>>  $assignmentsByEmployeeId  this schedule's
      * @return Collection<int, float>
      */
-    private function currentWeekFairScores(Schedule $schedule): Collection
+    private function currentWeekFairScores(Collection $assignmentsByEmployeeId): Collection
     {
         $companySetting = CompanySetting::current();
         $recentScores = $this->fairnessScores->recentScoresByEmployee();
 
-        $thisWeekScores = ShiftAssignment::query()
-            ->where('schedule_id', $schedule->id)
-            ->with('shiftPattern')
-            ->get()
-            ->groupBy('employee_id')
+        $thisWeekScores = $assignmentsByEmployeeId
             ->map(fn (Collection $assignments) => $this->fairnessScores->weightedHoursFor($assignments, $companySetting));
 
         return $recentScores->keys()

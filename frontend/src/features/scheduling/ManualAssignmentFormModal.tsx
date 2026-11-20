@@ -6,6 +6,7 @@ import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { TimeSelect } from '../../components/ui/TimeSelect';
 import type { Candidate, RankingMode } from '../../types/scheduling';
 import { fetchAlternativeCandidates } from './api';
+import { CandidateLoad } from './CandidateLoad';
 
 export interface TimeOverride {
   startsAt: string;
@@ -191,18 +192,7 @@ export function ManualAssignmentFormModal({
                   {candidate.employee.first_name} {candidate.employee.last_name}
                 </p>
                 <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
-                  {candidate.score !== null && (
-                    <span
-                      className="tabular-nums"
-                      title={
-                        rankingMode === 'cost'
-                          ? 'Estimated cost for this shift'
-                          : 'Recent fairness load: last 8 approved weeks + hours already assigned this week - not just this one shift'
-                      }
-                    >
-                      {rankingMode === 'cost' ? `€${candidate.score.toFixed(2)}` : `${candidate.score.toFixed(1)}h`}
-                    </span>
-                  )}
+                  <CandidateLoad candidate={candidate} rankingMode={rankingMode} />
                   {!candidate.qualified && <Badge tone="warning">Requires override</Badge>}
                   {candidate.qualified && !candidate.rule_compliant && <Badge tone="danger">Rule violation</Badge>}
                   {candidate.qualified && candidate.rule_compliant && candidate.violates_employee_constraint && (

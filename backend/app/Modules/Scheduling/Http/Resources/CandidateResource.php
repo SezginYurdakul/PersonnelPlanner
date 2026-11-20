@@ -25,6 +25,8 @@ class CandidateResource extends JsonResource
             'rule_compliant' => $this->ruleCompliant,
             'exclusion_reason' => $this->exclusionReason,
             'violates_employee_constraint' => $this->violatesEmployeeConstraint,
+            'week_hours' => $this->weekHours,
+            'contract_hours' => $this->contractHours,
         ];
     }
 }

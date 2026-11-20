@@ -46,7 +46,7 @@ final class SlotCandidateRanker
     ): Collection {
         $qualifiedEmployeeIds = $role->qualifiedEmployees()->pluck('employees.id')->all();
 
-        $ranked = Employee::query()->where('is_active', true)->with(['unavailabilities', 'roleExclusions'])->get()
+        $ranked = Employee::query()->where('is_active', true)->with(['unavailabilities', 'roleExclusions', 'currentEmploymentTerm'])->get()
             ->map(fn (Employee $employee) => $this->evaluateCandidate(
                 $employee,
                 qualified: in_array($employee->id, $qualifiedEmployeeIds, true),

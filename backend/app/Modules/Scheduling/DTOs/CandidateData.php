@@ -24,7 +24,22 @@ final readonly class CandidateData
          * still be manually overridden with admin confirmation.
          */
         public bool $violatesEmployeeConstraint = false,
+        /**
+         * Hours this plan already gives them this week, a shift and its tasks counted once -
+         * only set by the alternative-candidates lookup.
+         */
+        public ?float $weekHours = null,
+        /** @var array{min: ?float, max: float}|null their contract's weekly hours */
+        public ?array $contractHours = null,
     ) {}
+
+    /**
+     * @param  array{min: ?float, max: float}|null  $contractHours
+     */
+    public function withWeekLoad(float $weekHours, ?array $contractHours): self
+    {
+        return new self($this->employee, $this->score, $this->qualified, $this->ruleCompliant, $this->exclusionReason, $this->violatesEmployeeConstraint, $weekHours, $contractHours);
+    }
 
     public function isEligible(): bool
     {
