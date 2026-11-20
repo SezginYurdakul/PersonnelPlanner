@@ -18,6 +18,11 @@ if [ ! -f "$ENV_FILE" ]; then
   exit 1
 fi
 
+if grep -q '^MAIL_MAILER=smtp' "$ENV_FILE" && grep -q '^MAIL_PASSWORD=$' "$ENV_FILE"; then
+  echo "Error: MAIL_PASSWORD (the Resend API key) is empty in $ENV_FILE. Add it, or set MAIL_MAILER=log." >&2
+  exit 1
+fi
+
 compose() {
   docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
 }

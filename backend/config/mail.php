@@ -115,4 +115,20 @@ return [
         'name' => env('MAIL_FROM_NAME', env('APP_NAME', 'Laravel')),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Blocked Recipient Domains
+    |--------------------------------------------------------------------------
+    |
+    | Domains that are never mailed - the made-up addresses of the demo
+    | accounts, so they never bounce (BlockedMailDomainFilter). Comma
+    | separated in MAIL_BLOCKED_DOMAINS, e.g. "bakeryx.test,example.com".
+    |
+    */
+
+    'blocked_domains' => array_values(array_filter(array_map(
+        fn (string $domain) => strtolower(trim($domain)),
+        explode(',', (string) env('MAIL_BLOCKED_DOMAINS', '')),
+    ))),
+
 ];
