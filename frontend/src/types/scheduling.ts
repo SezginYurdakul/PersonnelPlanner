@@ -57,6 +57,8 @@ export interface GeneratedScope {
   slot_types: SlotType[];
   role_ids: number[] | null;
   line_slot_exclusions: LineSlotExclusion[] | null;
+  // Missing on schedules generated before stations and tasks could be left out per shift.
+  role_slot_exclusions?: RoleSlotExclusion[] | null;
 }
 
 export interface Schedule {
@@ -83,6 +85,10 @@ export interface Candidate {
   rule_compliant: boolean;
   exclusion_reason: string | null;
   violates_employee_constraint: boolean;
+  // Only from the alternative-candidates lookup: hours in this plan this week, and the
+  // weekly hours of their contract.
+  week_hours: number | null;
+  contract_hours: { min: number | null; max: number } | null;
 }
 
 export interface UnfilledSlot {
@@ -123,6 +129,13 @@ export interface LeaveConflict {
   reason: 'approved_leave' | 'sick_notice';
 }
 
+// A station or task left out on one shift; a null slot_type is the whole day (flexible hours).
+export interface RoleSlotExclusion {
+  role_id: number;
+  day_of_week: number;
+  slot_type: SlotType | null;
+}
+
 export interface LineSlotExclusion {
   line_id: number;
   day_of_week: number;
@@ -137,6 +150,7 @@ export interface GenerateSuggestionPayload {
   role_ids?: number[] | null;
   ranking_mode: RankingMode;
   line_slot_exclusions?: LineSlotExclusion[];
+  role_slot_exclusions?: RoleSlotExclusion[];
 }
 
 export interface CreateSchedulePayload {

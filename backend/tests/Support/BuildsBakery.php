@@ -130,7 +130,11 @@ trait BuildsBakery
         return $employee;
     }
 
-    protected function generateWeek(string $weekStart, string $mode = SuggestionRequestData::RANKING_FAIR, ?int $scheduleId = null): Schedule
+    /**
+     * @param  ?array<int, int>  $roleIds  the stations and tasks ticked in the form, null for all
+     * @param  ?array<int, array{role_id: int, day_of_week: int, slot_type: ?string}>  $roleSlotExclusions
+     */
+    protected function generateWeek(string $weekStart, string $mode = SuggestionRequestData::RANKING_FAIR, ?int $scheduleId = null, ?array $roleIds = null, ?array $roleSlotExclusions = null): Schedule
     {
         $exclusions = collect($this->lines)->flatMap(fn (Line $line) => [
             ['line_id' => $line->id, 'day_of_week' => 6, 'slot_type' => 'day'],
@@ -141,11 +145,12 @@ trait BuildsBakery
             $weekStart,
             collect($this->lines)->pluck('id')->all(),
             ['day', 'afternoon', 'night'],
-            null,
+            $roleIds,
             $mode,
             User::factory()->create()->id,
             $scheduleId,
             $exclusions,
+            $roleSlotExclusions,
         ));
     }
 

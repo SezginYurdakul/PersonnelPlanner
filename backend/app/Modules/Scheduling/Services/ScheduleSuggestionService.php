@@ -50,6 +50,7 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
 
         $lines = Line::query()->whereIn('id', $request->lineIds)->get();
         $lineSlotExclusions = $this->buildLineSlotExclusionSet($request->lineSlotExclusions);
+        $roleSlotExclusions = $this->buildRoleSlotExclusionSet($request->roleSlotExclusions);
 
         // Every ShiftPattern row across the selected lines' own groups, for the selected
         // slot types - keyed by "lineId|slotType" so each role's line resolves to the
@@ -82,22 +83,29 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
         $secondaryTaskRolesQuery = SchedulingRole::query()
             ->where('role_kind', SchedulingRole::KIND_SECONDARY_TASK)
             ->whereNotIn('attachment_type', ['shift_lead', 'flexible']);
+        $leadRolesQuery = SchedulingRole::query()->where('attachment_type', 'shift_lead')->orderBy('id');
+        $flexibleRolesQuery = SchedulingRole::query()->where('attachment_type', 'flexible');
 
+        // The stations and tasks ticked in the generate form: a shift lead role left out
+        // means no leads are planned this week, a flexible role left out isn't copied.
         if ($request->roleIds !== null) {
-            $stationRolesQuery->whereIn('id', $request->roleIds);
-            $secondaryTaskRolesQuery->whereIn('id', $request->roleIds);
+            foreach ([$stationRolesQuery, $secondaryTaskRolesQuery, $leadRolesQuery, $flexibleRolesQuery] as $query) {
+                $query->whereIn('id', $request->roleIds);
+            }
         }
 
         $stationRoles = $stationRolesQuery->get();
         $secondaryTaskRoles = $secondaryTaskRolesQuery->get();
+        $leadRoles = $leadRolesQuery->get();
+        $flexibleRoles = $flexibleRolesQuery->get();
         $days = collect(range(0, 6))->map(fn (int $offset) => $weekStart->copy()->addDays($offset));
 
         $horizonWeeks = $companySetting->planner_horizon_weeks;
         $plan = $this->rosterPlanner->planWeek(
             $weekStart,
             $request->slotTypes,
-            $this->openShiftLeadShifts($weekStart, $horizonWeeks, $request->slotTypes, $lines, $shiftPatternsByLineAndSlot, $lineSlotExclusions),
-            $this->openStationSlots($weekStart, $horizonWeeks, $request->slotTypes, $stationRoles, $shiftPatternsByLineAndSlot, $lineSlotExclusions),
+            $this->openShiftLeadShifts($weekStart, $horizonWeeks, $request->slotTypes, $lines, $leadRoles, $shiftPatternsByLineAndSlot, $lineSlotExclusions, $roleSlotExclusions),
+            $this->openStationSlots($weekStart, $horizonWeeks, $request->slotTypes, $stationRoles, $shiftPatternsByLineAndSlot, $lineSlotExclusions, $roleSlotExclusions),
             $request->rankingMode,
         );
 
@@ -112,16 +120,23 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
             : null;
 
         foreach ($days as $day) {
-            $this->assignFlexibleRoles($schedule, $day, $lines);
+            $this->assignFlexibleRoles(
+                $schedule,
+                $day,
+                $lines,
+                $flexibleRoles->reject(fn (SchedulingRole $role) => $this->isRoleSlotExcluded($roleSlotExclusions, $role->id, $day->dayOfWeekIso, null)),
+            );
 
             $presentBySlot = $this->placePlannedShiftLeads(
                 $schedule,
                 $day,
                 $plan,
+                $leadRoles,
                 $request->slotTypes,
                 $shiftPatternsByLineAndSlot,
                 $lines,
                 $lineSlotExclusions,
+                $roleSlotExclusions,
                 $lastAssignedByEmployeeAndRole,
             );
 
@@ -130,7 +145,7 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
                 // secondary-task holders as they're added - whom secondary tasks can ride.
                 $presentThisSlot = $presentBySlot->get($slotType, collect());
 
-                foreach ($this->stationsRunning($stationRoles, $day, $slotType, $shiftPatternsByLineAndSlot, $lineSlotExclusions) as ['role' => $role, 'shiftPattern' => $shiftPattern]) {
+                foreach ($this->stationsRunning($stationRoles, $day, $slotType, $shiftPatternsByLineAndSlot, $lineSlotExclusions, $roleSlotExclusions) as ['role' => $role, 'shiftPattern' => $shiftPattern]) {
                     $operators = Employee::query()->whereIn('id', $plan->operatorsFor($day->format('Y-m-d'), $slotType, $role->line_id, $role->id))->get();
 
                     foreach ($operators as $operator) {
@@ -143,6 +158,10 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
                 $secondaryTaskCountThisSlot = collect();
 
                 foreach ($secondaryTaskRoles as $task) {
+                    if ($this->isRoleSlotExcluded($roleSlotExclusions, $task->id, $day->dayOfWeekIso, $slotType)) {
+                        continue;
+                    }
+
                     $this->assignSecondaryTask(
                         $schedule,
                         $task,
@@ -178,6 +197,28 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
     private function isLineSlotExcluded(Collection $exclusionSet, ?int $lineId, int $isoDayOfWeek, string $slotType): bool
     {
         return $lineId !== null && $exclusionSet->has("{$lineId}|{$isoDayOfWeek}|{$slotType}");
+    }
+
+    /**
+     * @param  ?array<int, array{role_id: int, day_of_week: int, slot_type: ?string}>  $roleSlotExclusions
+     * @return Collection<string, true> keyed "roleId|isoDayOfWeek|slotType", "*" for the whole day
+     */
+    private function buildRoleSlotExclusionSet(?array $roleSlotExclusions): Collection
+    {
+        return collect($roleSlotExclusions ?? [])
+            ->mapWithKeys(fn (array $e) => ["{$e['role_id']}|{$e['day_of_week']}|".($e['slot_type'] ?? '*') => true]);
+    }
+
+    /**
+     * Whether the generate form left this station or task out on this shift - a null slot
+     * type asks about the whole day.
+     *
+     * @param  Collection<string, true>  $exclusionSet
+     */
+    private function isRoleSlotExcluded(Collection $exclusionSet, int $roleId, int $isoDayOfWeek, ?string $slotType): bool
+    {
+        return $exclusionSet->has("{$roleId}|{$isoDayOfWeek}|*")
+            || ($slotType !== null && $exclusionSet->has("{$roleId}|{$isoDayOfWeek}|{$slotType}"));
     }
 
     /**
@@ -218,6 +259,8 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
             // unchecked here (e.g. "don't generate Fri/Sat for Lijn 1") comes back as a
             // mandatory-coverage gap it never should have been.
             'line_slot_exclusions' => $request->lineSlotExclusions,
+            // The same for one station or task on a shift its line runs.
+            'role_slot_exclusions' => $request->roleSlotExclusions,
         ];
 
         if ($existing !== null) {
@@ -252,16 +295,19 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
 
     /**
      * The station roles that run on this day and slot type, with their line's pattern: the
-     * line has a pattern for the slot type and isn't closed or excluded that day.
+     * line has a pattern for the slot type and isn't closed or excluded that day, and the
+     * station itself isn't excluded on that shift.
      *
      * @param  Collection<int, SchedulingRole>  $stationRoles
      * @param  Collection<string, ShiftPattern>  $shiftPatternsByLineAndSlot
      * @param  Collection<string, true>  $lineSlotExclusions
+     * @param  Collection<string, true>  $roleSlotExclusions
      * @return Collection<int, array{role: SchedulingRole, shiftPattern: ShiftPattern}>
      */
-    private function stationsRunning(Collection $stationRoles, Carbon $day, string $slotType, Collection $shiftPatternsByLineAndSlot, Collection $lineSlotExclusions): Collection
+    private function stationsRunning(Collection $stationRoles, Carbon $day, string $slotType, Collection $shiftPatternsByLineAndSlot, Collection $lineSlotExclusions, Collection $roleSlotExclusions): Collection
     {
         return $stationRoles
+            ->reject(fn (SchedulingRole $role) => $this->isRoleSlotExcluded($roleSlotExclusions, $role->id, $day->dayOfWeekIso, $slotType))
             ->map(fn (SchedulingRole $role) => ['role' => $role, 'shiftPattern' => $shiftPatternsByLineAndSlot->get("{$role->line_id}|{$slotType}")])
             ->filter(fn (array $entry) => $entry['shiftPattern'] !== null && ($entry['role']->line === null || (
                 ! $entry['role']->line->isClosedOn($day->dayOfWeekIso, $slotType)
@@ -338,13 +384,13 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
             default => $stationAssignmentsThisSlot->pluck('employee'),
         };
 
-        // $stationAssignmentsThisSlot's first entry may itself be a line-independent Shift
-        // Lead placement (line_id=null) - skip past any such entries to find the first one
-        // that actually anchors to a line, rather than always taking literally the first
-        // element (which would incorrectly resolve to null whenever a shift lead was placed
-        // before this task runs).
-        $firstLineAnchoredAssignment = $stationAssignmentsThisSlot->first(fn (array $a) => $a['role']->line_id !== null);
-        $effectiveLineId = $task->line_id ?? $firstLineAnchoredAssignment['role']->line_id ?? null;
+        // The first line anyone works this slot on - a shift lead's role has no line, but
+        // its placement takes the hours of the line in its 'line_id', so a lead alone on a
+        // shift (a line with no stations running) still anchors a line-independent task.
+        $anchorLineId = $stationAssignmentsThisSlot
+            ->map(fn (array $a) => $a['line_id'] ?? $a['role']->line_id)
+            ->first(fn (?int $lineId) => $lineId !== null);
+        $effectiveLineId = $task->line_id ?? $anchorLineId;
         $shiftPattern = $effectiveLineId !== null
             ? $shiftPatternsByLineAndSlot->get("{$effectiveLineId}|{$slotType}")
             : null;
@@ -499,15 +545,18 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
     /**
      * Every shift-lead shift of the roster planner's horizon (ProjectPlan.md §28), starting
      * at this week: this week's lines, slot types and exclusions, repeated week after week -
-     * the lookahead assumes the scope stays as it is.
+     * the lookahead assumes the scope stays as it is. A shift where every shift-lead role is
+     * left out needs no lead.
      *
      * @param  array<int, string>  $slotTypes
      * @param  Collection<int, Line>  $lines
+     * @param  Collection<int, SchedulingRole>  $leadRoles  the in-scope shift-lead roles
      * @param  Collection<string, ShiftPattern>  $shiftPatternsByLineAndSlot
      * @param  Collection<string, true>  $lineSlotExclusions
+     * @param  Collection<string, true>  $roleSlotExclusions
      * @return Collection<int, array{date: string, slot_type: string, start: Carbon, end: Carbon}>
      */
-    private function openShiftLeadShifts(Carbon $weekStart, int $weeks, array $slotTypes, Collection $lines, Collection $shiftPatternsByLineAndSlot, Collection $lineSlotExclusions): Collection
+    private function openShiftLeadShifts(Carbon $weekStart, int $weeks, array $slotTypes, Collection $lines, Collection $leadRoles, Collection $shiftPatternsByLineAndSlot, Collection $lineSlotExclusions, Collection $roleSlotExclusions): Collection
     {
         $shifts = collect();
 
@@ -516,8 +565,9 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
 
             foreach ($slotTypes as $slotType) {
                 $line = $this->shiftLeadLine($day, $slotType, $lines, $shiftPatternsByLineAndSlot, $lineSlotExclusions);
+                $leadNeeded = $leadRoles->contains(fn (SchedulingRole $role) => ! $this->isRoleSlotExcluded($roleSlotExclusions, $role->id, $day->dayOfWeekIso, $slotType));
 
-                if ($line === null) {
+                if ($line === null || ! $leadNeeded) {
                     continue;
                 }
 
@@ -539,9 +589,10 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
      * @param  Collection<int, SchedulingRole>  $stationRoles
      * @param  Collection<string, ShiftPattern>  $shiftPatternsByLineAndSlot
      * @param  Collection<string, true>  $lineSlotExclusions
+     * @param  Collection<string, true>  $roleSlotExclusions
      * @return Collection<int, array{date: string, slot_type: string, line_id: int, role_id: int, start: Carbon, end: Carbon, min: int, max: int}>
      */
-    private function openStationSlots(Carbon $weekStart, int $weeks, array $slotTypes, Collection $stationRoles, Collection $shiftPatternsByLineAndSlot, Collection $lineSlotExclusions): Collection
+    private function openStationSlots(Carbon $weekStart, int $weeks, array $slotTypes, Collection $stationRoles, Collection $shiftPatternsByLineAndSlot, Collection $lineSlotExclusions, Collection $roleSlotExclusions): Collection
     {
         $slots = collect();
 
@@ -549,7 +600,7 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
             $day = $weekStart->copy()->addDays($offset);
 
             foreach ($slotTypes as $slotType) {
-                foreach ($this->stationsRunning($stationRoles, $day, $slotType, $shiftPatternsByLineAndSlot, $lineSlotExclusions) as ['role' => $role, 'shiftPattern' => $shiftPattern]) {
+                foreach ($this->stationsRunning($stationRoles, $day, $slotType, $shiftPatternsByLineAndSlot, $lineSlotExclusions, $roleSlotExclusions) as ['role' => $role, 'shiftPattern' => $shiftPattern]) {
                     [$start, $end] = $this->shiftTimeRange($day, $shiftPattern);
                     $min = max(1, $role->min_headcount);
                     $slots->push([
@@ -622,10 +673,12 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
      * roles is that shift's second lead on the first role. Returns who is present per slot
      * type, for the station and secondary-task steps that follow.
      *
+     * @param  Collection<int, SchedulingRole>  $leadRoles  the in-scope shift-lead roles, by id
      * @param  array<int, string>  $slotTypes
      * @param  Collection<string, ShiftPattern>  $shiftPatternsByLineAndSlot
      * @param  Collection<int, Line>  $lines
      * @param  Collection<string, true>  $lineSlotExclusions
+     * @param  Collection<string, true>  $roleSlotExclusions
      * @param  ?Collection<string, Carbon>  $lastAssignedByEmployeeAndRole
      * @return Collection<string, Collection<int, array{employee: Employee, role: SchedulingRole, line_id?: ?int}>>
      */
@@ -633,17 +686,19 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
         Schedule $schedule,
         Carbon $day,
         RosterWeekPlanData $plan,
+        Collection $leadRoles,
         array $slotTypes,
         Collection $shiftPatternsByLineAndSlot,
         Collection $lines,
         Collection $lineSlotExclusions,
+        Collection $roleSlotExclusions,
         ?Collection $lastAssignedByEmployeeAndRole,
     ): Collection {
         $result = collect($slotTypes)->mapWithKeys(fn (string $s) => [$s => collect()]);
-        $roles = SchedulingRole::query()->where('attachment_type', 'shift_lead')->orderBy('id')->get();
 
         foreach ($slotTypes as $slotType) {
             $line = $this->shiftLeadLine($day, $slotType, $lines, $shiftPatternsByLineAndSlot, $lineSlotExclusions);
+            $roles = $leadRoles->reject(fn (SchedulingRole $role) => $this->isRoleSlotExcluded($roleSlotExclusions, $role->id, $day->dayOfWeekIso, $slotType))->values();
 
             if ($line === null || $roles->isEmpty()) {
                 continue;
@@ -693,13 +748,10 @@ final class ScheduleSuggestionService implements ScheduleSuggestionServiceContra
      * bırakılır" design - a soft suggestion, not a mandatory-coverage concept.
      *
      * @param  Collection<int, Line>  $lines
+     * @param  Collection<int, SchedulingRole>  $flexibleRoles  the in-scope flexible-hours roles
      */
-    private function assignFlexibleRoles(Schedule $schedule, Carbon $day, Collection $lines): void
+    private function assignFlexibleRoles(Schedule $schedule, Carbon $day, Collection $lines, Collection $flexibleRoles): void
     {
-        $flexibleRoles = SchedulingRole::query()
-            ->where('attachment_type', 'flexible')
-            ->get();
-
         if ($flexibleRoles->isEmpty()) {
             return;
         }

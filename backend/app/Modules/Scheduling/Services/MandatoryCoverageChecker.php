@@ -83,6 +83,9 @@ final class MandatoryCoverageChecker
         // if none were made, same as any other missing scope field).
         $exclusionSet = collect($scope['line_slot_exclusions'] ?? [])
             ->mapWithKeys(fn (array $e) => ["{$e['line_id']}|{$e['day_of_week']}|{$e['slot_type']}" => true]);
+        // The same for one station or task on a shift ("*": the whole day).
+        $roleExclusionSet = collect($scope['role_slot_exclusions'] ?? [])
+            ->mapWithKeys(fn (array $e) => ["{$e['role_id']}|{$e['day_of_week']}|".($e['slot_type'] ?? '*') => true]);
 
         $roles = SchedulingRole::query()
             ->where('requires_coverage', $requiresCoverage)
@@ -159,7 +162,7 @@ final class MandatoryCoverageChecker
                         ? $this->isLineOpenForSlot($line, $isoDay, $slotType, $exclusionSet)
                         : $inScopeLines->contains(fn (Line $l) => $this->isLineOpenForSlot($l, $isoDay, $slotType, $exclusionSet));
 
-                    if (! $scheduledToRun) {
+                    if (! $scheduledToRun || $roleExclusionSet->has("{$role->id}|{$isoDay}|{$slotType}") || $roleExclusionSet->has("{$role->id}|{$isoDay}|*")) {
                         continue;
                     }
 

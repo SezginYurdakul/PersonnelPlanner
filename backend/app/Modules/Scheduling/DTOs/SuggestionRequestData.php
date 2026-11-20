@@ -18,6 +18,9 @@ final readonly class SuggestionRequestData
      *                                                                                                     Each entry means "do NOT generate this line on this ISO day-of-week (1=Monday..7=Sunday)
      *                                                                                                     for this slot_type", scoped to this one generate run only - never persisted. Null/empty
      *                                                                                                     means no exclusions (every selected line gets every selected slot_type, every day).
+     * @param  ?array<int, array{role_id: int, day_of_week: int, slot_type: ?string}>  $roleSlotExclusions
+     *                                                                                                      the same for one station or task on a shift its line runs - a null slot_type
+     *                                                                                                      leaves it out the whole day (a flexible-hours role has no slot type).
      */
     public function __construct(
         public string $weekStartDate,
@@ -31,5 +34,6 @@ final readonly class SuggestionRequestData
         // one rather than guessing which existing draft was meant.
         public ?int $scheduleId = null,
         public ?array $lineSlotExclusions = null,
+        public ?array $roleSlotExclusions = null,
     ) {}
 }

@@ -31,6 +31,10 @@ class GenerateSuggestionRequest extends FormRequest
             'line_slot_exclusions.*.line_id' => ['required', 'integer', 'in:'.implode(',', $this->input('line_ids', []))],
             'line_slot_exclusions.*.day_of_week' => ['required', 'integer', 'between:1,7'],
             'line_slot_exclusions.*.slot_type' => ['required', 'string', 'in:day,afternoon,night'],
+            'role_slot_exclusions' => ['nullable', 'array'],
+            'role_slot_exclusions.*.role_id' => ['required', 'integer', 'exists:scheduling_roles,id'],
+            'role_slot_exclusions.*.day_of_week' => ['required', 'integer', 'between:1,7'],
+            'role_slot_exclusions.*.slot_type' => ['nullable', 'string', 'in:day,afternoon,night'],
         ];
     }
 
@@ -45,6 +49,7 @@ class GenerateSuggestionRequest extends FormRequest
             requestedBy: $this->user()->id,
             scheduleId: $this->input('schedule_id'),
             lineSlotExclusions: $this->input('line_slot_exclusions'),
+            roleSlotExclusions: $this->input('role_slot_exclusions'),
         );
     }
 }

@@ -13,12 +13,13 @@ import { useAuth } from '../auth/AuthContext';
 import type {
   LeaveConflict,
   RankingMode,
+  RoleSlotExclusion,
   RuleResult,
   Schedule,
   ShiftAssignment,
   UnfilledSlot,
 } from '../../types/scheduling';
-import type { SlotType } from '../../types/lines';
+import type { SchedulingRole, SlotType } from '../../types/lines';
 import {
   submitScheduleForReview,
   approveSchedule,
@@ -37,6 +38,9 @@ import { ScheduleGridCell } from './ScheduleGridCell';
 import { ScheduleAssignmentCard } from './ScheduleAssignmentCard';
 import { RoleKindIcon } from './RoleKindIcon';
 import { OnLeaveThisWeekPanel } from './OnLeaveThisWeekPanel';
+import { WeeklySummaryPanel } from './WeeklySummaryPanel';
+import { GenerateRoleShifts, GenerateScopeCard, GenerateSlotGrid } from './GenerateShiftGrids';
+import { roleCellRuns, roleSlotKey, roleSlotRows } from './roleSlots';
 import { ScheduleAcknowledgmentPanel } from './ScheduleAcknowledgmentPanel';
 import { ManualAssignmentFormModal } from './ManualAssignmentFormModal';
 import { AlternativeCandidatesPanel } from './AlternativeCandidatesPanel';
@@ -52,6 +56,19 @@ const SLOT_TYPES: SlotType[] = ['day', 'afternoon', 'night'];
 // runs from Sunday night to Saturday afternoon. SLOT_TYPES' order still goes to the backend,
 // where it also decides the order generate() fills slots in.
 const SLOT_DISPLAY_ORDER: SlotType[] = ['night', 'day', 'afternoon'];
+
+const INDEPENDENT_SCOPE = 'independent';
+
+// isoDayOfWeek(1-7) -> every slot type, a freshly selected line's grid.
+function allDaySlots(): Record<number, SlotType[]> {
+  return Object.fromEntries([1, 2, 3, 4, 5, 6, 7].map((iso) => [iso, [...SLOT_TYPES]]));
+}
+
+// "19 of 21 shifts" for a line's (or the line-independent) grid.
+function shiftSummary(daySlots: Record<number, SlotType[]>): string {
+  const running = Object.values(daySlots).reduce((sum, slots) => sum + slots.length, 0);
+  return `${running} of ${7 * SLOT_TYPES.length} shifts`;
+}
 
 interface PendingSlot {
   lineId: number;
@@ -131,6 +148,17 @@ export function WeeklyScheduleGrid({ scheduleId, onBack }: WeeklyScheduleGridPro
   // every day to all three slot types (today's "everything on" behavior); unchecking a
   // cell there is what produces this one generate run's line_slot_exclusions.
   const [lineDaySlots, setLineDaySlots] = useState<Record<number, Record<number, SlotType[]>>>({});
+  // roleSlotKey()s of the station/task shifts unticked under a line's grid (or the
+  // line-independent one) - this run's role_slot_exclusions. Ticking a line, or one of its
+  // cells, ticks its stations and tasks there again.
+  const [roleSlotExclusions, setRoleSlotExclusions] = useState<string[]>([]);
+  // The line-independent roles (shift leading, company-wide tasks) as one more "line": on
+  // by default, so a new week never loses its leads by accident. Its unchecked cells go out
+  // as role_slot_exclusions for each of those roles.
+  const [independentSelected, setIndependentSelected] = useState(true);
+  const [independentDaySlots, setIndependentDaySlots] = useState<Record<number, SlotType[]>>(allDaySlots);
+  // Whose "Stations & tasks" list is open: a line id, or INDEPENDENT_SCOPE.
+  const [expandedScopes, setExpandedScopes] = useState<(number | typeof INDEPENDENT_SCOPE)[]>([]);
   const [pendingSlot, setPendingSlot] = useState<PendingSlot | null>(null);
   const [selectedAssignment, setSelectedAssignment] = useState<ShiftAssignment | null>(null);
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
@@ -159,6 +187,7 @@ export function WeeklyScheduleGrid({ scheduleId, onBack }: WeeklyScheduleGridPro
     queryFn: () => fetchRoles({ role_kind: 'secondary_task' }),
   });
   const flexibleRoles = secondaryTaskRoles?.filter((r) => r.attachment_type === 'flexible') ?? [];
+  const { data: allRoles } = useQuery({ queryKey: ['roles', {}], queryFn: () => fetchRoles() });
   const { data: schedule, isLoading } = useQuery({
     queryKey: ['schedule-plan', scheduleId],
     queryFn: () => fetchSchedule(scheduleId),
@@ -178,8 +207,38 @@ export function WeeklyScheduleGrid({ scheduleId, onBack }: WeeklyScheduleGridPro
     if (!schedule || restoredForScheduleId === scheduleId) return;
 
     const scope = schedule.generated_scope;
+    // The line-independent grid is read back from its roles' exclusions, which needs them.
+    if (scope?.role_slot_exclusions?.length && !allRoles) return;
 
     if (scope) {
+      const roleExclusionKeys = (scope.role_slot_exclusions ?? []).map((e) =>
+        roleSlotKey(e.role_id, e.day_of_week, e.slot_type),
+      );
+      setRoleSlotExclusions(roleExclusionKeys);
+
+      // A cell of the line-independent grid was on when any of its roles ran there - the
+      // shift-bound ones decide, or the flexible ones when there are no others.
+      const independent = (allRoles ?? []).filter((r) => r.is_active && r.line === null);
+      const shiftBound = independent.filter((r) => r.attachment_type !== 'flexible');
+      const deciding = shiftBound.length > 0 ? shiftBound : independent;
+      const independentSlots = Object.fromEntries(
+        [1, 2, 3, 4, 5, 6, 7].map((iso) => [
+          iso,
+          SLOT_TYPES.filter((slotType) =>
+            deciding.some(
+              (r) =>
+                !roleExclusionKeys.includes(
+                  roleSlotKey(r.id, iso, r.attachment_type === 'flexible' ? null : slotType),
+                ),
+            ),
+          ),
+        ]),
+      );
+      const anyOn = Object.values(independentSlots).some((slots) => slots.length > 0);
+      const nothingLeftOut = roleExclusionKeys.length === 0;
+      setIndependentSelected(nothingLeftOut || anyOn);
+      setIndependentDaySlots(!nothingLeftOut && anyOn ? independentSlots : allDaySlots());
+
       const exclusionSet = new Set(
         (scope.line_slot_exclusions ?? []).map((e) => `${e.line_id}|${e.day_of_week}|${e.slot_type}`),
       );
@@ -201,7 +260,7 @@ export function WeeklyScheduleGrid({ scheduleId, onBack }: WeeklyScheduleGridPro
     }
 
     setRestoredForScheduleId(scheduleId);
-  }, [schedule, scheduleId, restoredForScheduleId]);
+  }, [schedule, scheduleId, restoredForScheduleId, allRoles]);
 
   // Computed live server-side (MandatoryCoverageChecker) every time this resource renders -
   // sourced straight from the schedule query so it survives navigating away and back.
@@ -215,6 +274,36 @@ export function WeeklyScheduleGrid({ scheduleId, onBack }: WeeklyScheduleGridPro
   );
 
   const activeLines = lines?.filter((l) => l.is_active) ?? [];
+
+  // The active stations, then tasks, of one line - or the line-independent ones (null).
+  function scopeRoles(lineId: number | null) {
+    return (allRoles ?? [])
+      .filter((r) => r.is_active && (r.line?.id ?? null) === lineId)
+      .sort((a, b) => Number(a.role_kind !== 'station') - Number(b.role_kind !== 'station'));
+  }
+
+  const independentRoles = scopeRoles(null);
+
+  function independentRuns(isoDay: number, slotType: SlotType) {
+    return independentSelected && (independentDaySlots[isoDay] ?? []).includes(slotType);
+  }
+
+  function setRoleSlotIncluded(key: string, included: boolean) {
+    setRoleSlotExclusions((prev) => (included ? prev.filter((k) => k !== key) : [...prev, key]));
+  }
+
+  // Ticks these roles again, on one day and shift (a flexible role's whole day) or (no
+  // cell) everywhere.
+  function includeRoles(roles: SchedulingRole[], cell?: { isoDay: number; slotType: SlotType }) {
+    const prefixes = roles.map((r) =>
+      cell ? roleSlotKey(r.id, cell.isoDay, r.attachment_type === 'flexible' ? null : cell.slotType) : `${r.id}|`,
+    );
+    setRoleSlotExclusions((prev) => prev.filter((key) => !prefixes.some((prefix) => key.startsWith(prefix))));
+  }
+
+  function setScopeExpanded(scope: number | typeof INDEPENDENT_SCOPE, expanded: boolean) {
+    setExpandedScopes((prev) => (expanded ? [...prev, scope] : prev.filter((s) => s !== scope)));
+  }
 
   // Each line only shows the day/afternoon/night rows from its own shift_pattern_group -
   // "Day Shift" is the same concept everywhere, but the concrete row (and hours) a line
@@ -702,17 +791,32 @@ export function WeeklyScheduleGrid({ scheduleId, onBack }: WeeklyScheduleGridPro
                           setLineDaySlots((prev) => {
                             const next: Record<number, Record<number, SlotType[]>> = {};
                             for (const id of nextIds) {
-                              next[id] = prev[id] ?? Object.fromEntries(
-                                [1, 2, 3, 4, 5, 6, 7].map((iso) => [iso, [...SLOT_TYPES]]),
-                              );
+                              next[id] = prev[id] ?? allDaySlots();
                             }
                             return next;
                           });
+                          if (e.target.checked) includeRoles(scopeRoles(line.id));
                         }}
                       />
                       {line.name}
                     </label>
                   ))}
+                  {independentRoles.length > 0 && (
+                    <label className="flex items-center gap-2 border-t border-slate-200 pt-1.5">
+                      <input
+                        type="checkbox"
+                        checked={independentSelected}
+                        onChange={(e) => {
+                          setIndependentSelected(e.target.checked);
+                          if (e.target.checked) {
+                            setIndependentDaySlots(allDaySlots());
+                            includeRoles(independentRoles);
+                          }
+                        }}
+                      />
+                      Line-independent
+                    </label>
+                  )}
                 </div>
               </div>
               <div>
@@ -748,6 +852,35 @@ export function WeeklyScheduleGrid({ scheduleId, onBack }: WeeklyScheduleGridPro
                     }
                   }
 
+                  // A line's unticked station/task shifts where the line runs (the line's own
+                  // exclusions cover the rest); every unticked shift of the line-independent
+                  // roles, since they have no line of their own to exclude.
+                  const roleExclusions: RoleSlotExclusion[] = [];
+                  const addRoleExclusions = (
+                    roles: SchedulingRole[],
+                    runs: (isoDay: number, slotType: SlotType) => boolean,
+                    includeOffCells: boolean,
+                  ) => {
+                    for (const role of roles) {
+                      for (const isoDay of [1, 2, 3, 4, 5, 6, 7]) {
+                        for (const slotType of roleSlotRows(role)) {
+                          const left = roleCellRuns(runs, isoDay, slotType)
+                            ? roleSlotExclusions.includes(roleSlotKey(role.id, isoDay, slotType))
+                            : includeOffCells;
+                          if (left) roleExclusions.push({ role_id: role.id, day_of_week: isoDay, slot_type: slotType });
+                        }
+                      }
+                    }
+                  };
+                  for (const lineId of selectedLineIds) {
+                    addRoleExclusions(
+                      scopeRoles(lineId),
+                      (isoDay, slotType) => (lineDaySlots[lineId]?.[isoDay] ?? []).includes(slotType),
+                      false,
+                    );
+                  }
+                  addRoleExclusions(independentRoles, independentRuns, true);
+
                   generateMutation.mutate({
                     week_start_date: weekStartDate,
                     schedule_id: scheduleId,
@@ -755,6 +888,7 @@ export function WeeklyScheduleGrid({ scheduleId, onBack }: WeeklyScheduleGridPro
                     slot_types: Array.from(slotTypesInScope),
                     ranking_mode: rankingMode,
                     line_slot_exclusions: lineSlotExclusions,
+                    role_slot_exclusions: roleExclusions,
                   });
                 }}
               >
@@ -773,11 +907,14 @@ export function WeeklyScheduleGrid({ scheduleId, onBack }: WeeklyScheduleGridPro
             {generateError !== null && <p className="mt-2 text-xs text-red-600">{generateError}</p>}
 
             {selectedLineIds.length > 0 && (
-              <div className="mt-4 space-y-3">
+              <div className="mt-4 space-y-4">
                 <label className="block text-xs font-semibold text-slate-600">Days &amp; shifts per line</label>
                 {selectedLineIds.map((lineId) => {
                   const line = activeLines.find((l) => l.id === lineId);
                   const dayMap = lineDaySlots[lineId] ?? {};
+
+                  const roles = scopeRoles(lineId);
+                  const runs = (isoDay: number, slotType: SlotType) => (dayMap[isoDay] ?? []).includes(slotType);
 
                   function toggleCell(isoDay: number, slotType: SlotType, checked: boolean) {
                     setLineDaySlots((prev) => {
@@ -788,46 +925,65 @@ export function WeeklyScheduleGrid({ scheduleId, onBack }: WeeklyScheduleGridPro
                         : prevSlots.filter((s) => s !== slotType);
                       return { ...prev, [lineId]: { ...prevDayMap, [isoDay]: nextSlots } };
                     });
+                    if (checked) includeRoles(roles, { isoDay, slotType });
                   }
 
                   return (
-                    <div key={lineId} className="overflow-x-auto rounded border border-slate-300 p-2">
-                      <p className="mb-1 text-xs font-bold text-slate-700">{line?.name ?? `Line ${lineId}`}</p>
-                      <table className="text-xs">
-                        <thead>
-                          <tr>
-                            <th className="w-20" />
-                            {days.map((d) => (
-                              <th key={d} className="px-2 py-1 text-center font-semibold text-slate-600">
-                                {dayjs(d).format('ddd D')}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {SLOT_DISPLAY_ORDER.map((slotType) => (
-                            <tr key={slotType}>
-                              <td className="pr-2 capitalize text-slate-600">{slotType}</td>
-                              {days.map((d) => {
-                                const isoDay = dayjs(d).isoWeekday();
-                                const included = (dayMap[isoDay] ?? []).includes(slotType);
-                                return (
-                                  <td key={d} className="px-2 py-1 text-center">
-                                    <input
-                                      type="checkbox"
-                                      checked={included}
-                                      onChange={(e) => toggleCell(isoDay, slotType, e.target.checked)}
-                                    />
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                    <GenerateScopeCard key={lineId} title={line?.name ?? `Line ${lineId}`} summary={shiftSummary(dayMap)}>
+                      <div className="overflow-x-auto px-4 py-3">
+                        <GenerateSlotGrid
+                          days={days}
+                          rows={SLOT_DISPLAY_ORDER}
+                          isChecked={(isoDay, slotType) => slotType !== null && runs(isoDay, slotType)}
+                          onChange={(isoDay, slotType, checked) => slotType && toggleCell(isoDay, slotType, checked)}
+                        />
+                      </div>
+                      <GenerateRoleShifts
+                        days={days}
+                        roles={roles}
+                        isRunning={runs}
+                        excludedKeys={roleSlotExclusions}
+                        onChange={(roleId, isoDay, slotType, included) =>
+                          setRoleSlotIncluded(roleSlotKey(roleId, isoDay, slotType), included)
+                        }
+                        expanded={expandedScopes.includes(lineId)}
+                        onExpandedChange={(expanded) => setScopeExpanded(lineId, expanded)}
+                      />
+                    </GenerateScopeCard>
                   );
                 })}
+
+                {independentSelected && independentRoles.length > 0 && (
+                  <GenerateScopeCard title="Line-independent" independent summary={shiftSummary(independentDaySlots)}>
+                    <div className="overflow-x-auto px-4 py-3">
+                      <GenerateSlotGrid
+                        days={days}
+                        rows={SLOT_DISPLAY_ORDER}
+                        isChecked={(isoDay, slotType) => slotType !== null && independentRuns(isoDay, slotType)}
+                        onChange={(isoDay, slotType, checked) => {
+                          if (!slotType) return;
+                          setIndependentDaySlots((prev) => {
+                            const prevSlots = prev[isoDay] ?? [];
+                            const nextSlots = checked ? [...prevSlots, slotType] : prevSlots.filter((s) => s !== slotType);
+                            return { ...prev, [isoDay]: nextSlots };
+                          });
+                          if (checked) includeRoles(independentRoles, { isoDay, slotType });
+                        }}
+                      />
+                    </div>
+                    <GenerateRoleShifts
+                      days={days}
+                      roles={independentRoles}
+                      isRunning={independentRuns}
+                      excludedKeys={roleSlotExclusions}
+                      onChange={(roleId, isoDay, slotType, included) =>
+                        setRoleSlotIncluded(roleSlotKey(roleId, isoDay, slotType), included)
+                      }
+                      expanded={expandedScopes.includes(INDEPENDENT_SCOPE)}
+                      onExpandedChange={(expanded) => setScopeExpanded(INDEPENDENT_SCOPE, expanded)}
+                    />
+                  </GenerateScopeCard>
+                )}
               </div>
             )}
           </Card>
@@ -899,6 +1055,7 @@ export function WeeklyScheduleGrid({ scheduleId, onBack }: WeeklyScheduleGridPro
 
         {schedule && (
           <>
+            <WeeklySummaryPanel assignments={schedule.assignments ?? []} days={days} />
             <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500">
               <span className="flex items-center gap-1.5">
                 <RoleKindIcon roleKind="station" />
